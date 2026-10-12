@@ -1,0 +1,112 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Marketing version (e.g. 1.3.0)"
+        required: true
+        type: string
+      destination:
+        description: "Where the build goes"
+        required: true
+        type: choice
+        options: [testflight, app-store-review]
+        default: testflight
+      release_notes:
+        description: "What's new (TestFlight + GitHub Release)"
+        required: true
+        type: string
+
+# One release at a time; never cancel one mid-upload.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # Cheap checks first, so a typo doesn't wait for the test suite.
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Version is X.Y.Z and greater than the last tag
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::version must be X.Y.Z (App Store versions have no pre-release suffix), got '$VERSION'"
+            exit 1
+          fi
+          last="$(git tag --list 'v*' --sort=-v:refname | head -1)"
+          last="${last#v}"
+          if [[ -n "$last" ]]; then
+            highest="$(printf '%s\n%s\n' "$last" "$VERSION" | sort -V | tail -1)"
+            if [[ "$VERSION" == "$last" || "$highest" != "$VERSION" ]]; then
+              echo "::error::version $VERSION must be greater than the last tag v$last"
+              exit 1
+            fi
+          fi
+          echo "Releasing $VERSION (last tag: ${last:-none})"
+
+  # Never ship red.
+  test:
+    needs: validate
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: test
+    runs-on: macos-26
+    environment: production
+    permissions:
+      contents: write # tag + GitHub Release
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - run: sudo xcode-select -s "/Applications/Xcode_$(cat .xcode-version).app"
+      - run: brew install xcodegen
+      - uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+      - uses: webfactory/ssh-agent@v0.9.1
+        with:
+          ssh-private-key: ${{ secrets.MATCH_DEPLOY_KEY }}
+
+      - name: fastlane release
+        env:
+          VERSION: ${{ inputs.version }}
+          DESTINATION: ${{ inputs.destination }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+        run: bundle exec fastlane release "version:$VERSION" "destination:$DESTINATION"
+
+      - name: Tag and GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          DESTINATION: ${{ inputs.destination }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+        run: |
+          printf '%s\n\nShipped to: %s\n' "$RELEASE_NOTES" "$DESTINATION" > notes.md
+          gh release create "v$VERSION" build/*.dSYM.zip \
+            --target "$GITHUB_SHA" \
+            --title "$VERSION" \
+            --notes-file notes.md
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fastlane-logs
+          path: |
+            ~/Library/Logs/gym
+            fastlane/report.xml
+          if-no-files-found: ignore
