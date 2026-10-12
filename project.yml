@@ -32,7 +32,8 @@ targets:
       path: App/Resources/Info.plist
       properties:
         CFBundleDisplayName: Ear Reader
-        UILaunchScreen: {}
+        UILaunchScreen:
+          UIColorName: background
         UIBackgroundModes: [audio]
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: false
