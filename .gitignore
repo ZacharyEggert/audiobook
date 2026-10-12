@@ -66,3 +66,7 @@ fastlane/test_output
 
 # Test results
 *.xcresult
+
+# fastlane secrets and build output
+fastlane/.env
+build/

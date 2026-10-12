@@ -1,0 +1,86 @@
+opt_out_usage
+
+default_platform(:ios)
+
+APP_ID = "llc.ex-nihilo.audiobook"
+SCHEME = "EarReader"
+DESTINATIONS = %w[testflight app-store-review].freeze
+
+platform :ios do
+  desc "One-time, local: create the App Store certificate and profile in the match repo."
+  desc "Needs write access to the certificates repo (the CI deploy key is read-only)."
+  lane :certificates do
+    asc_api_key
+    match(readonly: false)
+  end
+
+  desc "Build and upload a release."
+  desc "Options: version:0.1.0 destination:testflight|app-store-review notes:\"...\""
+  desc "notes falls back to $RELEASE_NOTES."
+  lane :release do |options|
+    version = options[:version].to_s
+    UI.user_error!("version:X.Y.Z is required") unless version.match?(/\A\d+\.\d+\.\d+\z/)
+    destination = options.fetch(:destination, "testflight").to_s
+    UI.user_error!("destination must be one of #{DESTINATIONS.join(", ")}") unless DESTINATIONS.include?(destination)
+    notes = options[:notes] || ENV.fetch("RELEASE_NOTES", "")
+
+    asc_api_key
+    setup_ci # temporary keychain on CI; no-op locally
+    match(readonly: true)
+
+    # The project is generated, so regenerate it and switch the app target to the match profile.
+    sh("cd .. && xcodegen generate")
+    update_code_signing_settings(
+      path: "#{SCHEME}.xcodeproj",
+      targets: [SCHEME],
+      use_automatic_signing: false,
+      team_id: ENV.fetch("sigh_#{APP_ID}_appstore_team-id"),
+      profile_name: ENV.fetch("sigh_#{APP_ID}_appstore_profile-name"),
+      code_sign_identity: "Apple Distribution"
+    )
+
+    # Build numbers only ever go up, across all versions.
+    build_number = latest_testflight_build_number(initial_build_number: 0) + 1
+    UI.message("Building #{version} (#{build_number})")
+
+    build_app(
+      scheme: SCHEME,
+      export_method: "app-store",
+      output_directory: "build",
+      output_name: SCHEME,
+      xcargs: "MARKETING_VERSION=#{version} CURRENT_PROJECT_VERSION=#{build_number}"
+    )
+
+    # TestFlight sets the changelog after processing, so wait for it.
+    upload_to_testflight(changelog: notes, distribute_external: false)
+
+    if destination == "app-store-review"
+      upload_to_app_store(
+        app_version: version,
+        build_number: build_number.to_s,
+        skip_binary_upload: true,
+        skip_metadata: true,
+        skip_screenshots: true,
+        submit_for_review: true,
+        automatic_release: false,
+        force: true, # no HTML preview
+        precheck_include_in_app_purchases: false,
+        submission_information: { add_id_info_uses_idfa: false }
+      )
+    end
+  end
+
+  private_lane :asc_api_key do
+    key = {
+      key_id: ENV.fetch("ASC_KEY_ID"),
+      issuer_id: ENV.fetch("ASC_ISSUER_ID")
+    }
+    if ENV["ASC_KEY_P8_BASE64"].to_s.empty?
+      key[:key_filepath] = File.expand_path(ENV.fetch("ASC_KEY_PATH"))
+    else
+      key[:key_content] = ENV["ASC_KEY_P8_BASE64"]
+      key[:is_key_content_base64] = true
+    end
+    app_store_connect_api_key(**key)
+  end
+end

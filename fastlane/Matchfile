@@ -1,0 +1,5 @@
+# Certificates and profiles live in a private repo, encrypted with MATCH_PASSWORD.
+git_url(ENV.fetch("MATCH_GIT_URL"))
+storage_mode("git")
+type("appstore")
+app_identifier(["llc.ex-nihilo.audiobook"])
