@@ -42,3 +42,19 @@ swiftlint --strict     # must report 0 violations
 ## Pull requests
 
 `master` is protected. Open a PR from a branch. CI must pass `lint`, `package-tests` and `app-tests` before merging. See [docs/ROADMAP.md](docs/ROADMAP.md) for the task list; each task is one PR.
+
+## Releasing
+
+Signing uses [fastlane match](https://docs.fastlane.tools/actions/match/): the App Store certificate and profile are stored encrypted in a private certificates repo. Ruby comes from `.ruby-version`; install the pinned fastlane with `bundle install`.
+
+Copy `fastlane/.env.example` to `fastlane/.env` and fill it in (it is git-ignored). Then:
+
+```sh
+# Once, to create the certificate and profile. Needs write access to the certificates repo.
+bundle exec fastlane certificates
+
+# Build, sign and upload. Regenerates the project and switches the app target to the match profile.
+bundle exec fastlane release version:0.1.0 destination:testflight notes:"What's new"
+```
+
+The version you pass sets `MARKETING_VERSION`. The build number is the latest TestFlight build + 1, across all versions. Run `xcodegen generate` afterwards to get automatic signing back for development.

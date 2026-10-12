@@ -37,6 +37,10 @@ targets:
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: false
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        # XcodeGen defaults these to literals; tie them to the build settings fastlane overrides.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        ITSAppUsesNonExemptEncryption: false
         CFBundleDocumentTypes:
           - CFBundleTypeName: Audio
             LSHandlerRank: Alternate
