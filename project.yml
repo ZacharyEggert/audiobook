@@ -1,0 +1,72 @@
+name: EarReader
+options:
+  bundleIdPrefix: llc.ex-nihilo
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.0.1"
+    CURRENT_PROJECT_VERSION: "1"
+packages:
+  MediaParsing: { path: Packages/MediaParsing }
+  AudiobookCore: { path: Packages/AudiobookCore }
+  Playback: { path: Packages/Playback }
+  Library: { path: Packages/Library }
+targets:
+  EarReader:
+    type: application
+    platform: iOS
+    sources: [App]
+    dependencies:
+      - package: MediaParsing
+      - package: AudiobookCore
+      - package: Playback
+      - package: Library
+    entitlements:
+      path: App/Resources/EarReader.entitlements
+      properties:
+        com.apple.security.application-groups: [group.llc.ex-nihilo.audiobook]
+    info:
+      path: App/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: Ear Reader
+        UILaunchScreen: {}
+        UIBackgroundModes: [audio]
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: false
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Audio
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [public.audio, public.mpeg-4-audio, com.apple.m4a-audio, public.mp3]
+          - CFBundleTypeName: Zip archive
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [public.zip-archive]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: llc.ex-nihilo.audiobook
+        PRODUCT_NAME: EarReader
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+        SWIFT_APPROACHABLE_CONCURRENCY: YES
+        ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+  EarReaderTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [AppTests]
+    dependencies:
+      - target: EarReader
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: llc.ex-nihilo.audiobook.tests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  EarReader:
+    build:
+      targets:
+        EarReader: all
+    test:
+      targets: [EarReaderTests]

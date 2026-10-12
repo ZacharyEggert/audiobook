@@ -1,0 +1,8 @@
+excluded:
+  - "**/.build"
+  - EarReader.xcodeproj
+line_length: 140
+identifier_name:
+  excluded: [a, b, c, r, g, l1, l2, bg, fg]
+trailing_comma:
+  mandatory_comma: true
