@@ -96,7 +96,7 @@ private let fixtureChapters = [
 }
 
 /// Fuzz-style: every prefix of a real file either parses or throws.
-@Test func `never traps on any prefix`() throws {
+@Test func `MP4 never traps on any prefix`() throws {
     let file = try fixture("nero-chapters.m4b")
     var parsed = 0
     for length in 0 ... file.count where (try? MP4Parser.parse(file.prefix(length))) != nil {

@@ -87,3 +87,10 @@ public struct ByteReader: Sendable {
         return start ..< start + byteCount
     }
 }
+
+extension Data {
+    /// ISO-8859-1: each byte is the Unicode scalar of the same value. Never fails.
+    var latin1: String {
+        String(map { Character(Unicode.Scalar($0)) })
+    }
+}

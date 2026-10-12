@@ -161,7 +161,7 @@ extension ByteReader {
     mutating func nextBox() throws(ParseError) -> MP4Box? {
         guard remaining >= 8 else { return nil }
         let size32: UInt32 = try read()
-        let type = try String(readBytes(4).map { Character(Unicode.Scalar($0)) })
+        let type = try readBytes(4).latin1
         let bodyLength: UInt64
         switch size32 {
         case 0: bodyLength = UInt64(remaining) // box runs to the end of its container
