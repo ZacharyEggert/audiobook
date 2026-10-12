@@ -58,3 +58,12 @@ bundle exec fastlane release version:0.1.0 destination:testflight notes:"What's 
 ```
 
 The version you pass sets `MARKETING_VERSION`. The build number is the latest TestFlight build + 1, across all versions. Run `xcodegen generate` afterwards to get automatic signing back for development.
+
+### From GitHub Actions
+
+Actions → **Release** → Run workflow on `master`, with a version, a destination (`testflight` or `app-store-review`) and release notes. The workflow:
+
+1. checks the version is `X.Y.Z` and greater than the last `v*` tag
+2. runs the full CI suite (`ci.yml` via `workflow_call`)
+3. runs `fastlane release` in the `production` environment, which holds the secrets (`ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8_BASE64`, `MATCH_PASSWORD`, `MATCH_GIT_URL`, `MATCH_DEPLOY_KEY`)
+4. tags `v<version>` and creates a GitHub Release with the notes and the zipped dSYMs
