@@ -51,7 +51,7 @@ public enum FLACParser {
                 if isName {
                     numberedChapters[number, default: (nil, nil)].title = value
                 } else {
-                    numberedChapters[number, default: (nil, nil)].start = seconds(value)
+                    numberedChapters[number, default: (nil, nil)].start = clockSeconds(value)
                 }
             } else {
                 result.tags[key] = result.tags[key].map { "\($0); \(value)" } ?? value
@@ -111,12 +111,5 @@ public enum FLACParser {
         }
         guard !rest.isEmpty, rest.allSatisfy({ $0.isASCII && $0.isNumber }), let number = Int(rest) else { return nil }
         return (number, isName)
-    }
-
-    /// `HH:MM:SS.mmm`, also accepting fewer fields (`MM:SS.mmm`, `SS.mmm`).
-    private static func seconds(_ text: String) -> TimeInterval? {
-        let parts = text.split(separator: ":", omittingEmptySubsequences: false).map { TimeInterval($0) }
-        guard (1 ... 3).contains(parts.count), !parts.contains(nil) else { return nil }
-        return parts.reduce(0) { $0 * 60 + ($1 ?? 0) }
     }
 }
