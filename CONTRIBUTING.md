@@ -32,6 +32,10 @@ xcodebuild test -scheme EarReader \
 
 New tests use Swift Testing (`@Test`, `#expect`).
 
+### Fixtures
+
+`Tests/Fixtures` holds small audio files for parser and import tests, and they are committed. `scripts/make-fixtures.sh` builds them with ffmpeg and Python 3. It deletes the folder and writes it again with the same bytes each time. To add or change a fixture, edit its recipe in the script and rerun it. Don't edit the files by hand. The script fails if the total goes over 2 MB.
+
 ## Lint
 
 ```sh

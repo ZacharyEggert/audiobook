@@ -66,7 +66,7 @@ M2 (parsing) is pure Swift and can be built in parallel with M1.
 | 2.1 | `scripts/make-fixtures.sh` + committed fixtures (PLAN §7 list), all < 2 MB total | Script is reproducible |
 | 2.2 | Binary reader utilities (`ByteReader`: big/little endian, syncsafe ints, bounded slices that never trap) 🧪 | Fuzz-style tests on truncated input |
 | 2.3 | MP4 box walker: `moov/udta/meta/ilst` metadata, `covr`, freeform `----` atoms, `chpl` Nero chapters 🧪 | `chapters.m4b`, `nero-chapters.m4b` parse correctly |
-| 2.4 | QuickTime chapter track reading via `AVAsset.loadChapterMetadataGroups` (in `Library`, since it needs AVFoundation) 🧪 | Chapter titles and times match the fixture |
+| 2.4 | QuickTime chapter track reading in the MP4 parser (`tref/chap` text track; Foundation-only, cross-checked against `AVAsset.loadChapterMetadataGroups` in `Library` tests) 🧪 | Chapter titles and times match the fixture and AVFoundation |
 | 2.5 | ID3v2.3/2.4: text frames, `TXXX`, `COMM`, `APIC`, `CHAP`/`CTOC`, unsynchronisation, UTF-16 🧪 | `chapters.mp3` and `overdrive.mp3` parse correctly |
 | 2.6 | MP3 duration: Xing/Info/VBRI headers, plus a CBR fallback 🧪 | `vbr.mp3` duration within 0.5 s |
 | 2.7 | FLAC metadata blocks + Vorbis comments (`CHAPTERxxx`, `METADATA_BLOCK_PICTURE`) 🧪 | `chapters.flac` parses correctly |

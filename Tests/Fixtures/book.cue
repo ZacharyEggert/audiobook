@@ -1,0 +1,12 @@
+PERFORMER "Test Author"
+TITLE "Cue Fixture"
+FILE "book.mp3" MP3
+  TRACK 01 AUDIO
+    TITLE "Part One"
+    INDEX 01 00:00:00
+  TRACK 02 AUDIO
+    TITLE "Part Two"
+    INDEX 01 00:02:00
+  TRACK 03 AUDIO
+    TITLE "Part Three"
+    INDEX 01 00:04:37
