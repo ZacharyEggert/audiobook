@@ -1,6 +1,21 @@
-# Audiobook Player — Implementation Plan
+# Ear Reader — Implementation Plan
 
-A native iOS audiobook player for DRM-free files the user owns. Its look takes cues from Audible: a dark blue primary color on cool grey backgrounds. CI runs tests on every PR, and a GitHub Action that is started by hand does the release.
+**Ear Reader** is a native iOS audiobook player for DRM-free files the user owns. Its layout takes cues from Audible: a dark blue primary color on cool grey backgrounds, built with iOS 26 **Liquid Glass**. CI runs tests on every PR, and a GitHub Action that is started by hand does the release.
+
+### Decisions
+
+| | |
+|---|---|
+| App name | **Ear Reader** |
+| Bundle ID | `llc.ex-nihilo.audiobook` (widget: `.widgets`, App Group `group.llc.ex-nihilo.audiobook`) |
+| Minimum OS | **iOS 26** (Xcode 26, Swift 6.2) |
+| Visual language | Liquid Glass (system glass for navigation and controls, solid content layer) |
+| Language | Swift only |
+| Imports | Always **copied** into the app container |
+| Out of scope for v1 | Audiobookshelf/Plex/WebDAV servers, Ogg/Opus playback, DRM formats |
+| Apple Developer account | Live |
+
+See [ROADMAP.md](ROADMAP.md) for the task-level breakdown.
 
 ---
 
@@ -8,8 +23,8 @@ A native iOS audiobook player for DRM-free files the user owns. Its look takes c
 
 | Concern | Choice | Why |
 |---|---|---|
-| Language / UI | Swift 6 (strict concurrency), SwiftUI, `@Observable` | Background audio, Now Playing, CarPlay and AVFoundation chapter APIs are first-class only in native code. A React Native/Expo (TypeScript) app would still need custom native modules for chapters, CarPlay and gapless queues. |
-| Minimum OS | iOS 17 | Needed for SwiftData, `@Observable`, interactive widgets and modern App Intents. |
+| Language / UI | Swift 6.2 (strict concurrency, approachable-concurrency defaults with main-actor isolation for the app target), SwiftUI, `@Observable` | Background audio, Now Playing, CarPlay, Liquid Glass and AVFoundation chapter APIs are first-class in native code |
+| Minimum OS | iOS 26 | Liquid Glass APIs (`glassEffect`, `GlassEffectContainer`, `tabViewBottomAccessory`), latest SwiftData, App Intents and Control Center controls. No availability checks needed |
 | Persistence | SwiftData (optional CloudKit mirror for progress/bookmarks) | Simple models, sync for free later |
 | Playback | AVFoundation (`AVQueuePlayer`), plus an `AVAudioEngine`-based decoder engine for non-native formats | See §3 |
 | System integration | MediaPlayer (`MPNowPlayingInfoCenter`, `MPRemoteCommandCenter`), CarPlay, WidgetKit, App Intents | |
@@ -18,7 +33,7 @@ A native iOS audiobook player for DRM-free files the user owns. Its look takes c
 | Lint / format | SwiftLint + SwiftFormat | Enforced in CI |
 | Tests | Swift Testing (unit), XCTest/XCUITest (UI), swift-snapshot-testing | |
 | Release | fastlane (`match`, `gym`, `pilot`) run from a `workflow_dispatch` action | |
-| Third-party deps (kept minimal) | ZIPFoundation (zip import), SFBAudioEngine *or* vendored libogg/libopus (Phase 6), swift-snapshot-testing (tests only) | |
+| Third-party deps (kept minimal) | ZIPFoundation (zip import), swift-snapshot-testing (tests only) | |
 
 ---
 
@@ -73,7 +88,7 @@ audiobook/
 | **Folder of .mp3** (or .m4a / .flac) | AVFoundation via `AVQueuePlayer` | One chapter per file, titled from ID3 `TIT2` or a cleaned-up filename. If files have internal chapters, those are concatenated with offsets | The most common "collection" case. Multi-disc subfolders (`CD1`, `Disc 2`, `Part 03`) are merged into one book |
 | **.flac** | AVFoundation (iOS 11+) | Vorbis comments `CHAPTER001=00:00:00.000` / `CHAPTER001NAME=` | |
 | **.wav / .aiff / .caf** | AVFoundation | none, or a CUE sidecar | |
-| **.opus / .ogg (Vorbis/Opus)** | **DecoderEngine** (`AVAudioEngine` + libopus/libvorbis via SFBAudioEngine) | Vorbis comment chapters | AVFoundation can't demux Ogg. Phase 6 |
+| **.opus / .ogg (Vorbis/Opus)** | ✗ (out of scope for v1) | — | AVFoundation can't demux Ogg. Detected and reported as unsupported. The `PlaybackEngine` protocol leaves room for a decoder-based engine later |
 | **Single file + .cue sidecar** | Any of the above | CUE `TRACK`/`INDEX 01` | |
 | **.zip** of any of the above | Extracted on import (ZIPFoundation) | — | |
 | .aax / .aaxc (Audible DRM), .wma | ✗ | — | Detected and reported as "unsupported (DRM / codec)". DRM removal is out of scope |
@@ -146,7 +161,7 @@ protocol PlaybackEngine: AnyObject, Sendable {
 ```
 
 - **AVPlayerEngine**: `AVQueuePlayer` loaded with the remaining files from the current one onward. Seeking within the current file uses `seek(to:toleranceBefore:.zero,toleranceAfter:.zero)`; seeking into a different file rebuilds the queue. Next items are prerolled so playback is gapless across MP3 boundaries. `audioTimePitchAlgorithm = .timeDomain` keeps voices natural at speed.
-- **DecoderEngine** (Phase 6): `AVAudioEngine` + `AVAudioPlayerNode` + `AVAudioUnitTimePitch` for Ogg/Opus. It also allows **volume boost** and **voice EQ / silence trimming**, which may later be offered for all formats.
+- *Future:* an `AVAudioEngine`-based engine (`AVAudioPlayerNode` + `AVAudioUnitTimePitch`) would allow Ogg/Opus, **volume boost** and **voice EQ / silence trimming**. It is not part of v1.
 - **PlayerController** (`@Observable`, `@MainActor`): the single source of truth for the UI. It owns the engine, the current book, chapter and position.
 - **Audio session**: `.playback` category, `.spokenAudio` mode, and the background audio capability. It handles:
   - interruptions (calls, Siri): pause, then resume if `shouldResume`
@@ -161,17 +176,16 @@ protocol PlaybackEngine: AnyObject, Sendable {
 ## 5. Feature list
 
 ### Library and import
-- Import from the Files app: a document picker for files **and folders** (security-scoped, copied into the container by default, with an optional "reference in place" mode that uses bookmarks)
+- Import from the Files app: a document picker for files **and folders**. Everything is **copied** into `Application Support/Library/<bookID>/`, with security-scoped access held only for the duration of the copy
 - "Open in…" / share sheet, AirDrop, and Finder file sharing (`UIFileSharingEnabled`, `LSSupportsOpeningDocumentsInPlace`). A watched `Documents/Inbox` folder is auto-imported.
 - Zip import
 - Background import queue with progress. Durations are probed lazily, so a large library imports quickly.
 - Library views: **Titles / Authors / Series / Narrators / Collections** tabs (like Audible), grid ↔ list, sort (recent, title, author, progress, date added), filters (not started / in progress / finished / downloaded), search
 - User collections (playlists of books), mark as finished/unfinished, reset progress
 - Delete audio but keep the progress record; storage usage screen
-- *Later:* Audiobookshelf / Plex / WebDAV server sources
 
 ### Player
-- Mini player docked above the tab bar. It expands into the full player with a matched-geometry transition.
+- Mini player in the tab bar's bottom accessory (`tabViewBottomAccessory`), which shrinks inline when the tab bar minimizes on scroll. Tapping it opens the full player with a zoom navigation transition.
 - Full player:
   - large cover; book title; current chapter
   - scrubber in **chapter** or **whole-book** mode (tap to toggle)
@@ -199,21 +213,34 @@ protocol PlaybackEngine: AnyObject, Sendable {
 
 ---
 
-## 6. Interface design (Audible-inspired)
+## 6. Interface design (Audible layout, Liquid Glass materials)
+
+### Liquid Glass principles
+- **Two layers.** Content (covers, lists, text) sits on a solid cool grey or white layer. Navigation and controls float above it in **glass**. Glass is never stacked on glass and never used for content cards.
+- **Let the system do it first.** Tab bars, toolbars, sheets, menus, search fields and the tab bar's bottom accessory get Liquid Glass automatically on iOS 26. Custom glass is limited to the player controls and a few floating buttons.
+- **Custom glass APIs:** `.glassEffect(.regular.tint(Theme.primary).interactive(), in: .circle)` for the play button; `.buttonStyle(.glass)` / `.glassProminent` for secondary/primary actions; `GlassEffectContainer` + `glassEffectID` so the player's control cluster morphs as a group (e.g. the sleep timer pill expanding into a countdown).
+- **Navy as tint, not fill.** Navy appears as the tint of prominent glass (play button, primary actions) and as the app's `.tint`. Large flat navy areas are avoided because they fight the glass.
+- **Edge-to-edge artwork.** Book detail and the full player use `.backgroundExtensionEffect()` so cover art extends softly under the glass toolbar and sidebar edges.
+- **Accessibility.** Test with Reduce Transparency (glass falls back to frosted solid), Increase Contrast and Reduce Motion (no morphing), all handled by system glass if we don't fake it with custom blurs.
 
 ### Navigation
-`TabView` with **Home · Library · Stats · Settings**, and a persistent mini player above the tab bar (via `.safeAreaInset(edge: .bottom)`).
+`TabView` with **Home · Library · Stats · Settings** plus a `Tab(role: .search)` search tab, which iOS 26 renders as a separate glass button.
 
-- **Home**: a large "Continue Listening" hero card (cover, progress bar, big play button), then horizontal rows: *Recently added*, *In progress*, *Next in series*, *Finished recently*
-- **Library**: a segmented top tab strip (Titles · Authors · Series · Narrators · Collections), cover rows with title, author, narrator, a thin progress bar and "3h 12m left"
-- **Book detail**: blurred cover backdrop, metadata, description, chapter list, files, edit metadata
-- **Full player**: cover-dominant layout. A navy circular play button with 30 s skip buttons on either side. The bottom toolbar has **Speed · Sleep · Chapters · Bookmark · AirPlay**.
+- `.tabBarMinimizeBehavior(.onScrollDown)` collapses the tab bar while browsing.
+- The **mini player lives in `.tabViewBottomAccessory`**: cover thumbnail, title/chapter, play/pause and skip. It reads `@Environment(\.tabViewBottomAccessoryPlacement)` to show a compact layout when the tab bar is minimized.
+- Tapping the mini player presents the full player with `.navigationTransition(.zoom(sourceID:in:))` from the accessory.
+
+### Screens
+- **Home**: a large "Continue Listening" hero card (cover, progress bar, glass play button), then horizontal rows: *Recently added*, *In progress*, *Next in series*, *Finished recently*. Glass toolbar with an Import (`+`) button.
+- **Library**: a segmented picker in the glass toolbar (Titles · Authors · Series · Narrators · Collections), cover rows with title, author, narrator, a thin progress bar and "3h 12m left". Sort/filter in a toolbar menu.
+- **Book detail**: cover artwork extended behind the toolbar, metadata, description, chapter list, files, edit metadata. A floating `.glassProminent` "Play / Resume" button.
+- **Full player**: a cover-dominant layout over a blurred, colour-sampled cover backdrop. A `GlassEffectContainer` holds the transport: skip back, a large navy-tinted glass play button, and skip forward. The bottom glass toolbar has **Speed · Sleep · Chapters · Bookmark · AirPlay**. Chapters, speed and sleep open as sheets with partial detents, which are glass by default.
 
 ### Color tokens (Assets.xcassets color sets, exposed through `Theme`)
 
 | Token | Light | Dark |
 |---|---|---|
-| `primary` (dark blue) | `#14295A` | `#7A9CE8` (lifted so it has enough contrast on dark) |
+| `primary` (dark blue; app `.tint` and glass tint) | `#14295A` | `#7A9CE8` (lifted so it has enough contrast on dark) |
 | `primaryPressed` | `#0D1C40` | `#5F84D9` |
 | `onPrimary` | `#FFFFFF` | `#0B1220` |
 | `accent` (progress, links) | `#2F62D8` | `#8FB0FF` |
@@ -230,7 +257,7 @@ All text/background pairs are checked against WCAG AA in a unit test that loads 
 ### Typography and components
 - SF Pro with Dynamic Type styles. Titles are `.title2.bold()`; metadata is `.subheadline` in `textSecondary`.
 - Covers: 8 pt corner radius and a subtle shadow on light backgrounds. A square placeholder generated from the title and a hashed navy gradient.
-- Components: `CoverView`, `BookRow`, `BookCard`, `ProgressBar`, `PlayButton`, `ChapterRow`, `PillButton`, `SectionHeader`. Each has a snapshot test in light and dark.
+- Components: `CoverView`, `BookRow`, `BookCard`, `ProgressBar`, `GlassPlayButton`, `TransportCluster`, `MiniPlayerAccessory`, `ChapterRow`, `SectionHeader`. Each has a snapshot test in light and dark, and with Reduce Transparency on.
 
 ---
 
@@ -242,7 +269,7 @@ All text/background pairs are checked against WCAG AA in a unit test that loads 
 | Core logic | `BookTimeline` locate/global round-trips (property-style), chapter normalization, grouping heuristics (table-driven: file trees → expected books), metadata precedence, smart-rewind table, sleep-timer state machine | `swift test` in `AudiobookCore`, `Playback` (with a fake clock) |
 | Engine integration | Real `AVPlayerEngine` on the simulator: load an m4b and seek to chapter 3; play a 3-file MP3 book and seek across a file boundary; rate change; resume position | XCTest in the app test target |
 | Library | Import of each fixture type, zip import, re-scan keeps overrides, SwiftData in-memory store | XCTest |
-| UI snapshots | Home, Library, Player, Chapters, Sleep sheet in light/dark at default and AX3 Dynamic Type | swift-snapshot-testing (recorded on the CI simulator model) |
+| UI snapshots | Home, Library, Player, Chapters, Sleep sheet in light/dark, at default and AX3 Dynamic Type, and with Reduce Transparency | swift-snapshot-testing (recorded on the CI simulator model) |
 | UI flows | Seeded library via the `-UITestSeedLibrary` launch argument: open a book, play/pause, jump to a chapter, add a bookmark, set the sleep timer, change speed | XCUITest |
 
 **Fixtures** come from `scripts/make-fixtures.sh` (ffmpeg, a sine/silence source at low bitrate, a few seconds each), and the output is committed:
@@ -263,7 +290,7 @@ jobs:
     - swiftformat --lint . && swiftlint --strict
 
   package-tests:   # macos-latest, matrix over Packages/*
-    - sudo xcode-select -s /Applications/Xcode_<pinned>.app
+    - sudo xcode-select -s /Applications/Xcode_26.<pinned>.app   # iOS 26 SDK needs Xcode 26 (macos-26 runner image)
     - swift test --package-path Packages/${{ matrix.pkg }} --enable-code-coverage
     # MediaParsing & AudiobookCore are Foundation-only → also run on ubuntu-latest (cheap, fast)
 
@@ -271,7 +298,7 @@ jobs:
     - cache: ~/Library/Developer/Xcode/DerivedData/**/SourcePackages, keyed on Package.resolved
     - brew install xcodegen && xcodegen generate
     - xcodebuild test
-        -scheme Audiobook
+        -scheme EarReader
         -destination 'platform=iOS Simulator,name=<pinned iPhone>,OS=<pinned>'
         -testPlan CI
         -resultBundlePath TestResults.xcresult
@@ -312,7 +339,7 @@ jobs:
           #  match(type: "appstore", readonly: true)    # certs/profiles from private repo
           #  increment_version_number(version)          # MARKETING_VERSION
           #  build number = latest_testflight_build_number + 1
-          #  build_app(scheme: "Audiobook", export_method: "app-store")
+          #  build_app(scheme: "EarReader", export_method: "app-store")
           #  upload_to_testflight(changelog: notes)  | or deliver(submit_for_review: true)
       - git tag v${{ inputs.version }} && git push --tags
       - softprops/action-gh-release: tag, notes, attach dSYMs zip
@@ -336,7 +363,7 @@ Optional extra input `sideload: true` to also export an unsigned/ad-hoc IPA as a
 | **M4** | Listening features | Speed, sleep timer (fade, shake, end of chapter), bookmarks, smart rewind, chapter/book scrubber modes, Home screen, stats |
 | **M5** | Release pipeline | fastlane + match, `release.yml`, first **TestFlight** build |
 | **M6** | System integration | Widgets, App Intents/Siri, CarPlay (once the entitlement is granted), iCloud sync |
-| **M7** | Extended formats | DecoderEngine for Ogg/Opus, volume boost, metadata editor, merge/split books |
+| **M7** | Library power tools | Metadata editor, merge/split books, reorder files |
 | **M8** | Polish and App Store | Accessibility audit, localization, App Store screenshots (fastlane `snapshot` from UI tests), submit |
 
 ---
@@ -351,15 +378,12 @@ Optional extra input `sideload: true` to also export an unsigned/ad-hoc IPA as a
 | Slow import of large libraries (1000s of files) | Lazy duration probing, batched SwiftData writes, background `ModelActor` |
 | CarPlay entitlement approval delay | Request early (during M3); the feature is behind a build flag |
 | Snapshot flakiness across Xcode versions | Pinned Xcode + simulator, snapshots recorded only in CI (a `record` workflow input) |
-| Security-scoped URL expiry ("reference in place" mode) | Default to copying; refresh stale bookmarks and prompt to re-link |
+| Storage use from copying large libraries | Storage screen, delete-audio-keep-progress, warn before importing more than the free space |
+| Glass rendering differs between simulator runs, which makes snapshots flaky | Snapshot tests use a small per-pixel tolerance; glass-heavy screens are also snapshotted with Reduce Transparency, which renders deterministically |
 | Signing breakage in CI | fastlane match readonly + App Store Connect API key, never Apple ID passwords |
 
 ---
 
-## 12. Open questions
+## 12. Resolved questions
 
-1. Minimum iOS version: is iOS 17 fine, or should the app go to iOS 18 (newer SwiftData fixes and Control Center controls)?
-2. Should imports copy files into the app (simpler, safe) or reference them in place (saves space)? The plan defaults to copying, with in-place as an option.
-3. Is self-hosted server support (Audiobookshelf/Plex) wanted early, or later?
-4. Is there an Apple Developer Program account, and what bundle ID and app name? (Needed for M5 and CarPlay.)
-5. How important is Ogg/Opus support? It's the only reason to add a native decoder dependency.
+All original open questions are resolved; see **Decisions** at the top.
