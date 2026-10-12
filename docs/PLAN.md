@@ -352,19 +352,21 @@ Optional extra input `sideload: true` to also export an unsigned/ad-hoc IPA as a
 
 ---
 
-## 10. Milestones (each one or more PRs, CI green throughout)
+## 10. Milestones
 
-| # | Milestone | Deliverables |
+The task-level breakdown is in [ROADMAP.md](ROADMAP.md).
+
+| # | Milestone | TestFlight |
 |---|---|---|
-| **M0** | Scaffolding | XcodeGen project, empty packages, Theme + color sets, tab shell, SwiftLint/SwiftFormat, **ci.yml green**, Brewfile, bootstrap script |
-| **M1** | Parsing | `MediaParsing` (MP4/Nero, ID3 CHAP, Vorbis, CUE, OverDrive), fixtures + script, full unit tests |
-| **M2** | Library and import | Grouping heuristics, import pipeline (picker, folders, zip, Inbox), SwiftData store, cover cache, Library + Book detail UI |
-| **M3** | Core playback | `AVPlayerEngine`, `BookTimeline`, PlayerController, audio session handling, Now Playing + remote commands, position persistence, mini and full player |
-| **M4** | Listening features | Speed, sleep timer (fade, shake, end of chapter), bookmarks, smart rewind, chapter/book scrubber modes, Home screen, stats |
-| **M5** | Release pipeline | fastlane + match, `release.yml`, first **TestFlight** build |
-| **M6** | System integration | Widgets, App Intents/Siri, CarPlay (once the entitlement is granted), iCloud sync |
-| **M7** | Library power tools | Metadata editor, merge/split books, reorder files |
-| **M8** | Polish and App Store | Accessibility audit, localization, App Store screenshots (fastlane `snapshot` from UI tests), submit |
+| M0 | Scaffold: XcodeGen project, packages, theme, Liquid Glass tab shell, CI green | — |
+| M1 | TestFlight pipeline: fastlane match, `release.yml`, empty app shipped | 0.1.0 |
+| M2 | Media parsing (can run in parallel with M1) | — |
+| M3 | Library and import | 0.2.0 |
+| M4 | Playback core, mini and full player | 0.3.0 |
+| M5 | Player and listening features, Home, Stats | 0.4.0 |
+| M6 | System integration: App Intents, widgets, Control Center, CarPlay, iCloud | 0.5.0 |
+| M7 | Library power tools | — |
+| M8 | Polish and App Store | **1.0.0** |
 
 ---
 
