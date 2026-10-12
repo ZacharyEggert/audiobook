@@ -11,7 +11,6 @@ private let threeChapters = [
 /// What `MediaProbe` should report for one fixture. Nil fields aren't checked.
 struct ProbeCase: CustomTestStringConvertible, Sendable {
     var file: String
-    var chapterTrack: [RawChapter] = []
     var format: ProbeResult.Format
     var duration: TimeInterval?
     var title: String?
@@ -33,11 +32,11 @@ struct ProbeCase: CustomTestStringConvertible, Sendable {
 
 private let cases: [ProbeCase] = [
     ProbeCase(
-        file: "chapters.m4b", chapterTrack: threeChapters, format: .mp4, duration: 6, title: "Chapters Fixture",
+        file: "chapters.m4b", format: .mp4, duration: 6, title: "Chapters Fixture",
         author: "Test Author", narrator: "Test Narrator", year: 2024, hasCover: true,
         chapters: threeChapters, chapterSource: .quickTime,
     ),
-    ProbeCase(file: "chapters.m4b", format: .mp4, duration: 6, hasCover: true), // no chapter track passed in
+    ProbeCase(file: "both-chapters.m4b", format: .mp4, duration: 6, chapters: threeChapters, chapterSource: .quickTime),
     ProbeCase(
         file: "nero-chapters.m4b", format: .mp4, duration: 6, title: "Chapters Fixture", series: "Fixture Saga",
         chapters: threeChapters, chapterSource: .nero,
@@ -81,7 +80,7 @@ private let cases: [ProbeCase] = [
 
 @Test(arguments: cases)
 func `probes fixture`(expected: ProbeCase) throws {
-    let result = try MediaProbe.probe(fixtureURL(expected.file), chapterTrack: expected.chapterTrack)
+    let result = try MediaProbe.probe(fixtureURL(expected.file))
     #expect(result.format == expected.format)
     if let duration = expected.duration {
         #expect(try abs(#require(result.duration) - duration) < 0.5)

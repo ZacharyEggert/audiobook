@@ -35,17 +35,15 @@ public struct ProbeResult: Equatable, Sendable {
 
 /// Reads metadata, cover, duration and chapters from one audio file, whatever its format.
 public enum MediaProbe {
-    /// - Parameter chapterTrack: the file's QuickTime chapter track, read through AVFoundation by the caller
-    ///   (`Library.ChapterTrackReader`), because this package is Foundation-only. Ignored unless the file is MP4.
     /// - Throws: `UnsupportedFormat` (with a user-facing `reason`) for DRM and codecs we can't play,
     ///   `ParseError` for unrecognised or damaged files, or the file-read error.
-    public static func probe(_ url: URL, chapterTrack: [RawChapter] = []) throws -> ProbeResult {
+    public static func probe(_ url: URL) throws -> ProbeResult {
         let data = try Data(contentsOf: url, options: .alwaysMapped)
         if let unsupported = UnsupportedFormat.detect(data, pathExtension: url.pathExtension) {
             throw unsupported
         }
         guard let format = format(of: data) else { throw ParseError.malformed("unrecognised audio format") }
-        var raw = try parse(data, format: format, chapterTrack: chapterTrack)
+        var raw = try parse(data, format: format)
         if raw.chapters.isEmpty, let cue = cueChapters(for: url) {
             raw.chapters = cue
             raw.chapterSource = .cue
@@ -120,13 +118,13 @@ public enum MediaProbe {
         }
     }
 
-    private static func parse(_ data: Data, format: ProbeResult.Format, chapterTrack: [RawChapter]) throws -> Raw {
+    private static func parse(_ data: Data, format: ProbeResult.Format) throws -> Raw {
         switch format {
         case .mp4:
             let mp4 = try MP4Parser.parse(data)
             var raw = Raw(tags: mp4.tags, cover: mp4.cover, duration: mp4.duration, keys: .mp4)
-            raw.setChapters(chapterTrack, from: .quickTime)
-            raw.setChapters(mp4.chapters, from: .nero)
+            raw.setChapters(mp4.trackChapters, from: .quickTime)
+            raw.setChapters(mp4.neroChapters, from: .nero)
             return raw
         case .mp3, .aac:
             let id3 = try ID3Parser.parse(data)

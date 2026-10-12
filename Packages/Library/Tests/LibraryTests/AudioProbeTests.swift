@@ -1,17 +1,26 @@
-import Foundation
+import AVFoundation
 @testable import Library
 import MediaParsing
 import Testing
 
-@Test func `prefers the QuickTime chapter track`() async throws {
-    let result = try await AudioProbe.probe(fixture("chapters.m4b"))
-    #expect(result.chapterSource == .quickTime)
-    #expect(result.chapters.map(\.title) == ["Opening", "Middle", "Ending"])
+/// AVFoundation's reading of a file's QuickTime chapter track, as an oracle for `MP4Parser`.
+private func avFoundationChapters(of url: URL) async throws -> [RawChapter] {
+    let asset = AVURLAsset(url: url)
+    let locale = try await asset.load(.availableChapterLocales).first ?? Locale(identifier: "und")
+    var chapters: [RawChapter] = []
+    for group in try await asset.loadChapterMetadataGroups(withTitleLocale: locale, containingItemsWithCommonKeys: []) {
+        let titleItem = AVMetadataItem.metadataItems(from: group.items, filteredByIdentifier: .commonIdentifierTitle).first
+        try await chapters.append(RawChapter(start: group.timeRange.start.seconds, title: titleItem?.load(.stringValue) ?? ""))
+    }
+    return chapters
 }
 
-@Test func `keeps MediaProbe chapters when there is no track`() async throws {
-    #expect(try await AudioProbe.probe(fixture("nero-chapters.m4b")).chapterSource == .nero)
-    #expect(try await AudioProbe.probe(fixture("chapters.mp3")).chapterSource == .id3)
+@Test(arguments: ["chapters.m4b", "both-chapters.m4b", "nero-chapters.m4b"])
+func `chapter track parse matches AVFoundation`(file: String) async throws {
+    let expected = try await avFoundationChapters(of: fixture(file))
+    let result = try await AudioProbe.probe(fixture(file))
+    #expect(try MP4Parser.parse(Data(contentsOf: fixture(file))).trackChapters == expected)
+    #expect(result.chapterSource == (expected.isEmpty ? .nero : .quickTime))
 }
 
 @Test func `fills duration through AVFoundation`() async throws {

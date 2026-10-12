@@ -10,7 +10,8 @@ private let fixtureChapters = [
 
 @Test func `parses chpl and freeform atoms`() throws {
     let result = try MP4Parser.parse(fixture("nero-chapters.m4b"))
-    #expect(result.chapters == fixtureChapters)
+    #expect(result.neroChapters == fixtureChapters)
+    #expect(result.trackChapters.isEmpty)
     #expect(result.tags["©nam"] == "Chapters Fixture")
     #expect(result.tags["©alb"] == "Chapters Fixture")
     #expect(result.tags["©ART"] == "Test Author")
@@ -23,11 +24,31 @@ private let fixtureChapters = [
     #expect(result.cover == nil)
 }
 
-@Test func `parses covr and ignores the QuickTime chapter track`() throws {
+@Test func `parses covr and the QuickTime chapter track`() throws {
     let result = try MP4Parser.parse(fixture("chapters.m4b"))
-    #expect(result.chapters.isEmpty) // chapter track is read through AVFoundation in Library
+    #expect(result.trackChapters == fixtureChapters)
+    #expect(result.neroChapters.isEmpty)
     #expect(result.tags["©nam"] == "Chapters Fixture")
     #expect(try #require(result.cover).prefix(2) == Data([0xFF, 0xD8])) // JPEG
+}
+
+@Test func `reads both chapter kinds when present`() throws {
+    let result = try MP4Parser.parse(fixture("both-chapters.m4b"))
+    #expect(result.trackChapters == fixtureChapters)
+    #expect(result.neroChapters == fixtureChapters)
+}
+
+/// The first title sample of chapters.m4b sits at byte 44 (its stco), inside mdat.
+@Test func `decodes UTF-16 titles and tolerates unreadable samples`() throws {
+    var utf16 = try Data(fixture("chapters.m4b"))
+    utf16.replaceSubrange(44 ..< 50, with: [0, 4, 0xFE, 0xFF, 0, 0x41]) // length 4: BOM + "A"
+    #expect(try MP4Parser.parse(utf16).trackChapters.first?.title == "A")
+
+    var unreadable = try Data(fixture("chapters.m4b"))
+    unreadable.replaceSubrange(44 ..< 46, with: [0xFF, 0xFF]) // length past the end of the file
+    let chapters = try MP4Parser.parse(unreadable).trackChapters
+    #expect(chapters.map(\.title) == ["", "Middle", "Ending"])
+    #expect(chapters.map(\.start) == [0, 2, 4.5])
 }
 
 @Test func `throws on truncated moov`() throws {
@@ -92,7 +113,7 @@ private let fixtureChapters = [
 
 @Test func `reads version 0 chpl`() throws {
     let chpl = box("chpl", Data([0, 0, 0, 0, 1]) + be64(15_000_000) + Data([2]) + Data("Hi".utf8))
-    #expect(try MP4Parser.parse(box("moov", box("udta", chpl))).chapters == [RawChapter(start: 1.5, title: "Hi")])
+    #expect(try MP4Parser.parse(box("moov", box("udta", chpl))).neroChapters == [RawChapter(start: 1.5, title: "Hi")])
 }
 
 /// Fuzz-style: every prefix of a real file either parses or throws.
@@ -103,6 +124,19 @@ private let fixtureChapters = [
         parsed += 1
     }
     #expect(parsed == 1) // moov is last, so only the whole file is complete
+}
+
+/// Fuzz-style: corrupting any single byte of moov (sizes, counts, offsets in the sample tables) never traps.
+@Test func `MP4 never traps on a corrupted moov`() throws {
+    let file = try Data(fixture("chapters.m4b"))
+    let moovStart = try #require(file.indices.dropLast(4).first { Data(file[$0 ..< $0 + 4]) == Data("moov".utf8) }) - 4
+    for index in moovStart ..< file.count {
+        for value: UInt8 in [0x00, 0x7F, 0xFF] {
+            var corrupted = file
+            corrupted[index] = value
+            _ = try? MP4Parser.parse(corrupted)
+        }
+    }
 }
 
 // MARK: - Box builders

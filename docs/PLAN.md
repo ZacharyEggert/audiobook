@@ -83,7 +83,7 @@ audiobook/
 
 | Format | Playback | Chapter source(s) | Notes |
 |---|---|---|---|
-| **.m4b / .m4a / .aac / .mp4** (AAC, ALAC, xHE-AAC) | AVFoundation | QuickTime chapter track (`AVAsset.loadChapterMetadataGroups`). Falls back to **Nero `chpl` atom** read by our own MP4 box parser, because AVFoundation ignores it | This is the main audiobook format. Many tools (e.g. some m4b-tool outputs, older Nero encoders) write only `chpl`. |
+| **.m4b / .m4a / .aac / .mp4** (AAC, ALAC, xHE-AAC) | AVFoundation | QuickTime chapter track (the `tref/chap` text track, read by our own MP4 box parser so `MediaParsing` stays Foundation-only). Falls back to the **Nero `chpl` atom**, which AVFoundation ignores | This is the main audiobook format. Many tools (e.g. some m4b-tool outputs, older Nero encoders) write only `chpl`. |
 | **.mp3** (single file) | AVFoundation | **ID3v2 `CHAP`/`CTOC` frames** (our own parser; AVFoundation doesn't expose them reliably). Also OverDrive `TXXX:OverDrive MediaMarkers` | Use `AVURLAssetPreferPreciseDurationAndTimingKey = true` for accurate VBR seeking; read the Xing/LAME header for duration |
 | **Folder of .mp3** (or .m4a / .flac) | AVFoundation via `AVQueuePlayer` | One chapter per file, titled from ID3 `TIT2` or a cleaned-up filename. If files have internal chapters, those are concatenated with offsets | The most common "collection" case. Multi-disc subfolders (`CD1`, `Disc 2`, `Part 03`) are merged into one book |
 | **.flac** | AVFoundation (iOS 11+) | Vorbis comments `CHAPTER001=00:00:00.000` / `CHAPTER001NAME=` | |
@@ -273,7 +273,7 @@ All text/background pairs are checked against WCAG AA in a unit test that loads 
 | UI flows | Seeded library via the `-UITestSeedLibrary` launch argument: open a book, play/pause, jump to a chapter, add a bookmark, set the sleep timer, change speed | XCUITest |
 
 **Fixtures** come from `scripts/make-fixtures.sh` (ffmpeg, a sine/silence source at low bitrate, a few seconds each), and the output is committed:
-- `chapters.m4b` (QuickTime chapters), `nero-chapters.m4b` (`chpl` only, written by a small post-processing step), `chapters.mp3` (ID3 CHAP), `chapters.flac` (Vorbis chapters), `multi-mp3/` (3 tracks + `cover.jpg`), `multi-disc/CD1,CD2/`, `book.mp3 + book.cue`, `overdrive.mp3`, `vbr.mp3`, `corrupt.m4b`, `book.zip`
+- `chapters.m4b` (QuickTime chapters), `nero-chapters.m4b` (`chpl` only, written by a small post-processing step), `both-chapters.m4b` (chapter track and `chpl`), `chapters.mp3` (ID3 CHAP), `chapters.flac` (Vorbis chapters), `multi-mp3/` (3 tracks + `cover.jpg`), `multi-disc/CD1,CD2/`, `book.mp3 + book.cue`, `overdrive.mp3`, `vbr.mp3`, `corrupt.m4b`, `book.zip`
 
 Coverage target: ≥ 90% for `MediaParsing`/`AudiobookCore`, ≥ 60% overall.
 

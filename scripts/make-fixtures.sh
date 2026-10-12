@@ -50,6 +50,9 @@ tagged=(-map_metadata 1 -map_chapters 1 -map 0:a -map 2:v -c:v copy -disposition
 # m4b: QuickTime chapter track only (no chpl), with covr
 ff -f lavfi -i "$(sine 6)" "${in[@]}" "${tagged[@]}" -c:a aac -b:a 16k -movflags +disable_chpl "${bx[@]}" "$out/chapters.m4b"
 
+# m4b: chapter track and chpl both (ffmpeg's default); the track should win
+ff -f lavfi -i "$(sine 6)" -i "$tmp/chapters.txt" -map_metadata 1 -c:a aac -b:a 16k "${bx[@]}" "$out/both-chapters.m4b"
+
 # m4b: Nero chpl only, plus a freeform ----:com.apple.iTunes:SERIES atom (what m4b-tool writes)
 ff -f lavfi -i "$(sine 6)" -i "$tmp/chapters.txt" -map_metadata 1 -map_chapters -1 -c:a aac -b:a 16k "${bx[@]}" "$out/nero-chapters.m4b"
 python3 - "$out/nero-chapters.m4b" <<'PY'
@@ -167,10 +170,11 @@ find "$tmp/zip" -exec touch -t 202401010000 {} +
 
 # Sanity checks
 chapters() { ffprobe -v error -show_chapters -of csv "$1" | wc -l | tr -d ' '; }
-for f in chapters.m4b nero-chapters.m4b chapters.mp3 chapters.flac; do
+for f in chapters.m4b both-chapters.m4b nero-chapters.m4b chapters.mp3 chapters.flac; do
   [[ "$(chapters "$out/$f")" == 3 ]] || { echo "error: $f does not have 3 chapters" >&2; exit 1; }
 done
 ! grep -q chpl "$out/chapters.m4b" || { echo "error: chapters.m4b has a chpl atom" >&2; exit 1; }
+grep -q chpl "$out/both-chapters.m4b" || { echo "error: both-chapters.m4b has no chpl atom" >&2; exit 1; }
 total=$(find "$out" -type f -exec cat {} + | wc -c)
 ((total < 2000000)) || { echo "error: fixtures are $total bytes (limit 2 MB)" >&2; exit 1; }
 echo "Fixtures: $(find "$out" -type f | wc -l | tr -d ' ') files, $total bytes"

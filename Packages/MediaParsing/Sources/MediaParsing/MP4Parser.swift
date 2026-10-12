@@ -8,33 +8,37 @@ public struct MP4Metadata: Equatable, Sendable {
     public var tags: [String: String] = [:]
     /// First `covr` image (JPEG or PNG bytes).
     public var cover: Data?
-    /// Nero `chpl` chapters. QuickTime chapter tracks need AVFoundation, so `Library` reads those.
-    public var chapters: [RawChapter] = []
+    /// QuickTime chapter track (what iTunes, ffmpeg and most m4b tools write). Preferred over `neroChapters`.
+    public var trackChapters: [RawChapter] = []
+    /// Nero `chpl` chapters, which AVFoundation ignores.
+    public var neroChapters: [RawChapter] = []
 }
 
-/// Reads metadata, cover and Nero chapters from MP4/M4A/M4B. Pass a memory-mapped `Data`
-/// (`.alwaysMapped`): only box headers and `moov` are touched, never the audio in `mdat`.
+/// Reads metadata, cover and chapters from MP4/M4A/M4B. Pass a memory-mapped `Data` (`.alwaysMapped`):
+/// only box headers, `moov` and the chapter title samples are touched, never the audio in `mdat`.
 public enum MP4Parser {
     public static func parse(_ data: Data) throws(ParseError) -> MP4Metadata {
         var file = ByteReader(data)
         var result = MP4Metadata()
         while var box = try file.nextBox() {
             if box.type == "moov" {
-                try parseMoov(&box.body, into: &result)
+                try parseMoov(&box.body, file: data, into: &result)
                 return result // ignore whatever follows; some taggers leave junk after moov
             }
         }
         throw .malformed("no moov box")
     }
 
-    private static func parseMoov(_ moov: inout ByteReader, into result: inout MP4Metadata) throws(ParseError) {
+    private static func parseMoov(_ moov: inout ByteReader, file: Data, into result: inout MP4Metadata) throws(ParseError) {
+        var traks: [ByteReader] = []
         while var box = try moov.nextBox() {
             switch box.type {
             case "mvhd": result.duration = try parseMvhd(&box.body)
+            case "trak": traks.append(box.body)
             case "udta":
                 while var child = try box.body.nextBox() {
                     switch child.type {
-                    case "chpl": result.chapters = try parseChpl(&child.body)
+                    case "chpl": result.neroChapters = try parseChpl(&child.body)
                     case "meta": try parseMeta(&child.body, into: &result)
                     default: break
                     }
@@ -42,6 +46,8 @@ public enum MP4Parser {
             default: break
             }
         }
+        // A damaged chapter track shouldn't cost the tags and cover; chpl or later sources can still supply chapters
+        result.trackChapters = (try? MP4ChapterTrack.chapters(in: traks, file: file)) ?? []
     }
 
     private static func parseMvhd(_ body: inout ByteReader) throws(ParseError) -> TimeInterval? {
