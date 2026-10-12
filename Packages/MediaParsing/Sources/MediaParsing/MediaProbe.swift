@@ -37,8 +37,13 @@ public struct ProbeResult: Equatable, Sendable {
 public enum MediaProbe {
     /// - Parameter chapterTrack: the file's QuickTime chapter track, read through AVFoundation by the caller
     ///   (`Library.ChapterTrackReader`), because this package is Foundation-only. Ignored unless the file is MP4.
+    /// - Throws: `UnsupportedFormat` (with a user-facing `reason`) for DRM and codecs we can't play,
+    ///   `ParseError` for unrecognised or damaged files, or the file-read error.
     public static func probe(_ url: URL, chapterTrack: [RawChapter] = []) throws -> ProbeResult {
         let data = try Data(contentsOf: url, options: .alwaysMapped)
+        if let unsupported = UnsupportedFormat.detect(data, pathExtension: url.pathExtension) {
+            throw unsupported
+        }
         guard let format = format(of: data) else { throw ParseError.malformed("unrecognised audio format") }
         var raw = try parse(data, format: format, chapterTrack: chapterTrack)
         if raw.chapters.isEmpty, let cue = cueChapters(for: url) {
