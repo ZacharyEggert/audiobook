@@ -16,6 +16,8 @@ public struct ProbeResult: Equatable, Sendable {
     public var title: String?
     /// This file's own title. A multi-file book uses it to name the file's chapter.
     public var trackTitle: String?
+    /// The album tag alone. Grouping compares it across a folder's files.
+    public var album: String?
     public var author: String?
     public var narrator: String?
     public var series: String?
@@ -155,21 +157,21 @@ public enum MediaProbe {
 
     /// Upper-cased tag keys to try, in order, for each field.
     private struct TagKeys {
-        var title, trackTitle, author, narrator, series, seriesIndex, description, year, genre, publisher, track, disc: [String]
+        var title, trackTitle, album, author, narrator, series, seriesIndex, description, year, genre, publisher, track, disc: [String]
 
         static let mp4 = TagKeys(
-            title: ["©ALB", "©NAM"], trackTitle: ["©NAM"], author: ["AART", "©ART"], narrator: ["©NRT", "©WRT"],
+            title: ["©ALB", "©NAM"], trackTitle: ["©NAM"], album: ["©ALB"], author: ["AART", "©ART"], narrator: ["©NRT", "©WRT"],
             series: ["©MVN", "----:COM.APPLE.ITUNES:SERIES"], seriesIndex: ["©MVI", "----:COM.APPLE.ITUNES:SERIES-PART"],
             description: ["LDES", "DESC"], // desc is capped at 255 characters, so prefer the long one
             year: ["©DAY"], genre: ["©GEN"], publisher: ["©PUB"], track: ["TRKN"], disc: ["DISK"],
         )
         static let id3 = TagKeys(
-            title: ["TALB", "TIT2"], trackTitle: ["TIT2"], author: ["TPE2", "TPE1"], narrator: ["TXXX:NARRATOR", "TCOM"],
+            title: ["TALB", "TIT2"], trackTitle: ["TIT2"], album: ["TALB"], author: ["TPE2", "TPE1"], narrator: ["TXXX:NARRATOR", "TCOM"],
             series: ["TXXX:SERIES", "MVNM"], seriesIndex: ["TXXX:SERIES-PART", "MVIN"], description: ["COMM", "TXXX:DESCRIPTION"],
             year: ["TDRC", "TYER"], genre: ["TCON"], publisher: ["TPUB"], track: ["TRCK"], disc: ["TPOS"],
         )
         static let vorbis = TagKeys(
-            title: ["ALBUM", "TITLE"], trackTitle: ["TITLE"], author: ["ALBUMARTIST", "ALBUM ARTIST", "ARTIST"],
+            title: ["ALBUM", "TITLE"], trackTitle: ["TITLE"], album: ["ALBUM"], author: ["ALBUMARTIST", "ALBUM ARTIST", "ARTIST"],
             narrator: ["NARRATOR", "COMPOSER"], series: ["SERIES"], seriesIndex: ["SERIESPART", "SERIES-PART"],
             description: ["DESCRIPTION"], year: ["DATE", "YEAR"], genre: ["GENRE"], publisher: ["ORGANIZATION", "PUBLISHER"],
             track: ["TRACKNUMBER"], disc: ["DISCNUMBER"],
@@ -183,7 +185,7 @@ public enum MediaProbe {
         }
         return ProbeResult(
             format: format, duration: raw.duration,
-            title: first(keys.title), trackTitle: first(keys.trackTitle),
+            title: first(keys.title), trackTitle: first(keys.trackTitle), album: first(keys.album),
             author: first(keys.author), narrator: first(keys.narrator),
             series: first(keys.series), seriesIndex: first(keys.seriesIndex).flatMap { Double($0) },
             description: first(keys.description), year: first(keys.year).flatMap { leadingInt($0, maxDigits: 4) },
