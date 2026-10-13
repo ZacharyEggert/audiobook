@@ -39,7 +39,7 @@ struct LibraryScreen: View {
                     }
                 }
             }
-            .fileImporter(isPresented: $isPicking, allowedContentTypes: [.audio, .folder], allowsMultipleSelection: true) { result in
+            .fileImporter(isPresented: $isPicking, allowedContentTypes: [.audio, .folder, .zip], allowsMultipleSelection: true) { result in
                 if case let .success(urls) = result {
                     imports.importPicked(urls)
                 }

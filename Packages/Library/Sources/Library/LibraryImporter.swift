@@ -53,7 +53,7 @@ public actor LibraryImporter: ModelActor {
     public nonisolated let modelExecutor: any ModelExecutor
     /// Holds one folder per book, named by its ID.
     public nonisolated let root: URL
-    private let availableCapacity: @Sendable (URL) throws -> Int64
+    let availableCapacity: @Sendable (URL) throws -> Int64
 
     static let audioExtensions: Set = ["m4b", "m4a", "mp4", "aac", "mp3", "flac", "wav", "aif", "aiff", "aifc", "caf"]
     static let imageExtensions: Set = ["jpg", "jpeg", "png"]
@@ -110,8 +110,14 @@ public actor LibraryImporter: ModelActor {
         try fileManager.createDirectory(at: staging, withIntermediateDirectories: true)
         defer { try? fileManager.removeItem(at: staging) }
 
+        let scoped = items.filter { $0.startAccessingSecurityScopedResource() }
+        defer { scoped.forEach { $0.stopAccessingSecurityScopedResource() } }
+
         var summary = ImportSummary()
-        let audio = try copy(items, into: staging, failures: &summary.failures, progress: progress)
+        let unzipped = staging.appendingPathExtension("zips")
+        defer { try? fileManager.removeItem(at: unzipped) }
+        let expanded = try unzip(items, into: unzipped, failures: &summary.failures)
+        let audio = try copy(expanded, into: staging, movingFrom: unzipped, failures: &summary.failures, progress: progress)
 
         // ponytail: probed one at a time; a TaskGroup if big imports read slowly
         var probes: [String: ProbeResult] = [:]
@@ -156,17 +162,21 @@ public actor LibraryImporter: ModelActor {
     }
 
     /// Copies the audio, cue sheets and images in `items` into `staging`, each item under its own (de-duplicated) name.
+    /// Files under `extracted` are already ours, so they're moved instead.
     /// - Returns: The copied audio, relative to `staging`.
     private func copy(
-        _ items: [URL], into staging: URL, failures: inout [ImportFailure], progress: @Sendable (ImportProgress) -> Void,
+        _ items: [URL], into staging: URL, movingFrom extracted: URL, failures: inout [ImportFailure],
+        progress: @Sendable (ImportProgress) -> Void,
     ) throws -> [String] {
         let fileManager = FileManager.default
-        let scoped = items.filter { $0.startAccessingSecurityScopedResource() }
-        defer { scoped.forEach { $0.stopAccessingSecurityScopedResource() } }
+        let extractedPath = extracted.standardizedFileURL.path + "/"
+        func isExtracted(_ url: URL) -> Bool {
+            url.standardizedFileURL.path.hasPrefix(extractedPath)
+        }
 
         let plan = Self.plan(items, failures: &failures)
         let needed = plan.reduce(Int64(0)) { total, entry in
-            total + Int64((try? entry.source.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+            isExtracted(entry.source) ? total : total + Int64((try? entry.source.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
         }
         let available = try availableCapacity(root)
         guard needed <= available else { throw ImportError.insufficientSpace(needed: needed, available: available) }
@@ -177,7 +187,11 @@ public actor LibraryImporter: ModelActor {
             let destination = staging.appending(path: entry.path)
             do {
                 try fileManager.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try fileManager.copyItem(at: entry.source, to: destination)
+                if isExtracted(entry.source) {
+                    try fileManager.moveItem(at: entry.source, to: destination)
+                } else {
+                    try fileManager.copyItem(at: entry.source, to: destination)
+                }
                 if entry.isAudio {
                     audio.append(entry.path)
                 }
@@ -200,7 +214,7 @@ public actor LibraryImporter: ModelActor {
             } else if let unsupported = UnsupportedFormat(pathExtension: ext) {
                 failures.append(ImportFailure(path: path, reason: unsupported.reason))
             } else if ext == "zip" {
-                failures.append(ImportFailure(path: path, reason: "Zip archives aren't supported yet."))
+                failures.append(ImportFailure(path: path, reason: "Zip archives inside folders aren't opened. Import the zip on its own."))
             } else if pickedDirectly {
                 failures.append(ImportFailure(path: path, reason: "This isn't an audio file Ear Reader can play."))
             }
