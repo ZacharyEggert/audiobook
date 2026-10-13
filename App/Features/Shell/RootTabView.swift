@@ -1,3 +1,4 @@
+import Library
 import SwiftUI
 
 struct RootTabView: View {
@@ -9,7 +10,7 @@ struct RootTabView: View {
                 PlaceholderScreen(title: "Home", systemImage: "house")
             }
             Tab("Library", systemImage: "books.vertical") {
-                PlaceholderScreen(title: "Library", systemImage: "books.vertical")
+                LibraryScreen()
             }
             Tab("Stats", systemImage: "chart.bar") {
                 PlaceholderScreen(title: "Stats", systemImage: "chart.bar")
@@ -73,5 +74,9 @@ private struct MiniPlayerPlaceholder: View {
 }
 
 #Preview {
-    RootTabView().tint(Theme.primary)
+    let container = try! LibraryStore.makeContainer(directory: nil) // swiftlint:disable:this force_try
+    RootTabView()
+        .tint(Theme.primary)
+        .environment(ImportCoordinator(container: container))
+        .modelContainer(container)
 }
