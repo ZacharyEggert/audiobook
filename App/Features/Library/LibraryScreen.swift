@@ -56,6 +56,7 @@ struct LibraryScreen: View {
                 }
             }
             .navigationDestination(for: LibraryGroup.self) { GroupBooksScreen(group: $0) }
+            .navigationDestination(for: BookRecord.self) { BookDetailScreen(book: $0) }
             .fileImporter(isPresented: $isPicking, allowedContentTypes: [.audio, .folder, .zip], allowsMultipleSelection: true) { result in
                 if case let .success(urls) = result {
                     imports.importPicked(urls)
