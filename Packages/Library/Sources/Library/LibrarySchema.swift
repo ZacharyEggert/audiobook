@@ -217,12 +217,36 @@ public extension BookRecord {
         (chapters ?? []).sorted { $0.index < $1.index }
     }
 
-    /// The book with the user's overrides applied, for playback and display.
+    /// The user's overrides applied, for display.
+    var displayTitle: String {
+        override?.title ?? title
+    }
+
+    var displayAuthors: [String] {
+        override?.authors ?? authors
+    }
+
+    var displayNarrators: [String] {
+        override?.narrators ?? narrators
+    }
+
+    var displaySeries: String? {
+        override?.series ?? series
+    }
+
+    var displaySeriesIndex: Double? {
+        override?.seriesIndex ?? seriesIndex
+    }
+
+    var displaySummary: String? {
+        override?.summary ?? summary
+    }
+
+    /// The book with the user's overrides applied, for playback.
     var book: Book {
         Book(
-            id: id, title: override?.title ?? title, authors: override?.authors ?? authors,
-            narrators: override?.narrators ?? narrators, series: override?.series ?? series,
-            seriesIndex: override?.seriesIndex ?? seriesIndex, coverRef: coverRef,
+            id: id, title: displayTitle, authors: displayAuthors, narrators: displayNarrators, series: displaySeries,
+            seriesIndex: displaySeriesIndex, coverRef: coverRef,
             files: orderedFiles.map { AudioFile(relativePath: $0.relativePath, duration: $0.duration, format: $0.format) },
             chapters: orderedChapters.map { Chapter(index: $0.index, title: $0.title, start: $0.start, end: $0.end) },
         )
