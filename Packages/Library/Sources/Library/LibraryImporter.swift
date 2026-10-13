@@ -155,7 +155,7 @@ public actor LibraryImporter: ModelActor {
     // MARK: - Copying
 
     /// A file to copy into staging, at `path` under it.
-    private struct CopyEntry {
+    struct CopyEntry {
         var source: URL
         var path: String
         var isAudio: Bool
@@ -201,58 +201,6 @@ public actor LibraryImporter: ModelActor {
             progress(ImportProgress(phase: .copying, completed: count + 1, total: plan.count))
         }
         return audio
-    }
-
-    /// What to copy from `items`: audio, cue sheets and images, walking into folders. Reports files that can't be imported.
-    private static func plan(_ items: [URL], failures: inout [ImportFailure]) -> [CopyEntry] {
-        var plan: [CopyEntry] = []
-        func consider(_ file: URL, path: String, pickedDirectly: Bool) {
-            let ext = file.pathExtension.lowercased()
-            let isAudio = audioExtensions.contains(ext)
-            if isAudio || imageExtensions.contains(ext) || ext == "cue" {
-                plan.append(CopyEntry(source: file, path: path, isAudio: isAudio))
-            } else if let unsupported = UnsupportedFormat(pathExtension: ext) {
-                failures.append(ImportFailure(path: path, reason: unsupported.reason))
-            } else if ext == "zip" {
-                failures.append(ImportFailure(path: path, reason: "Zip archives inside folders aren't opened. Import the zip on its own."))
-            } else if pickedDirectly {
-                failures.append(ImportFailure(path: path, reason: "This isn't an audio file Ear Reader can play."))
-            }
-        }
-
-        var names: Set<String> = []
-        for item in items {
-            let name = unique(item.lastPathComponent, in: &names)
-            guard (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else {
-                consider(item, path: name, pickedDirectly: true)
-                continue
-            }
-            let base = item.resolvingSymlinksInPath().pathComponents.count
-            let files = FileManager.default.enumerator(
-                at: item,
-                includingPropertiesForKeys: [.isRegularFileKey],
-                options: .skipsHiddenFiles,
-            )
-            while let file = files?.nextObject() as? URL {
-                guard (try? file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else { continue }
-                let relative = file.resolvingSymlinksInPath().pathComponents.dropFirst(base).joined(separator: "/")
-                consider(file, path: "\(name)/\(relative)", pickedDirectly: false)
-            }
-        }
-        return plan
-    }
-
-    /// `"Book"`, then `"Book 2"`, `"Book 3"`… keeping the extension.
-    private static func unique(_ name: String, in names: inout Set<String>) -> String {
-        var candidate = name, number = 1
-        while names.contains(candidate) {
-            number += 1
-            let ext = (name as NSString).pathExtension
-            let stem = (name as NSString).deletingPathExtension
-            candidate = ext.isEmpty ? "\(stem) \(number)" : "\(stem) \(number).\(ext)"
-        }
-        names.insert(candidate)
-        return candidate
     }
 
     // MARK: - Saving
@@ -307,11 +255,15 @@ public actor LibraryImporter: ModelActor {
         // Folder images (including the book folder's, above any disc folders), for the cover pipeline.
         // Copied, not moved: books split from one folder share them.
         let directories = Set([""] + files.map { ($0.relativePath as NSString).deletingLastPathComponent })
+        var images: [String] = []
         for directory in directories {
             let stagedDirectory = staging.appending(path: group.folder).appending(path: directory)
-            let images = (try? fileManager.contentsOfDirectory(at: stagedDirectory, includingPropertiesForKeys: nil)) ?? []
-            for image in images where Self.imageExtensions.contains(image.pathExtension.lowercased()) {
-                try? fileManager.copyItem(at: image, to: folder.appending(path: directory).appending(path: image.lastPathComponent))
+            let found = (try? fileManager.contentsOfDirectory(at: stagedDirectory, includingPropertiesForKeys: nil)) ?? []
+            for image in found where Self.imageExtensions.contains(image.pathExtension.lowercased()) {
+                let relative = directory.isEmpty ? image.lastPathComponent : "\(directory)/\(image.lastPathComponent)"
+                if (try? fileManager.copyItem(at: image, to: folder.appending(path: relative))) != nil {
+                    images.append(relative)
+                }
             }
         }
 
@@ -319,6 +271,7 @@ public actor LibraryImporter: ModelActor {
         func tag<Value>(_ key: KeyPath<ProbeResult, Value?>) -> Value? {
             tags.lazy.compactMap { $0[keyPath: key] }.first
         }
+        let cover = CoverStore.saveCover(embedded: tag(\.cover), images: images, in: folder)
         // One file's title falls back to its track title; a folder's to the folder name, not its first track
         let title = (tags.count == 1 ? tag(\.title) : tag(\.album)) ?? group.name
         let book = Book(id: id, title: title, files: files, chapters: Chapter.normalized(fileChapters))
@@ -326,7 +279,8 @@ public actor LibraryImporter: ModelActor {
         let record = BookRecord(
             id: id, title: title, authors: tag(\.author).map { [$0] } ?? [], narrators: tag(\.narrator).map { [$0] } ?? [],
             series: tag(\.series), seriesIndex: tag(\.seriesIndex), summary: tag(\.description), year: tag(\.year),
-            genre: tag(\.genre), publisher: tag(\.publisher), duration: book.duration, needsReview: group.needsReview,
+            genre: tag(\.genre), publisher: tag(\.publisher), coverRef: cover.map { "\(id.uuidString)/\($0)" },
+            duration: book.duration, needsReview: group.needsReview,
         )
         modelContext.insert(record)
         record.files = book.files.enumerated().map { index, file in
@@ -344,5 +298,59 @@ public actor LibraryImporter: ModelActor {
         case is ParseError: "The file is damaged or isn't a supported audio format."
         default: error.localizedDescription
         }
+    }
+}
+
+private extension LibraryImporter {
+    /// What to copy from `items`: audio, cue sheets and images, walking into folders. Reports files that can't be imported.
+    static func plan(_ items: [URL], failures: inout [ImportFailure]) -> [CopyEntry] {
+        var plan: [CopyEntry] = []
+        func consider(_ file: URL, path: String, pickedDirectly: Bool) {
+            let ext = file.pathExtension.lowercased()
+            let isAudio = audioExtensions.contains(ext)
+            if isAudio || imageExtensions.contains(ext) || ext == "cue" {
+                plan.append(CopyEntry(source: file, path: path, isAudio: isAudio))
+            } else if let unsupported = UnsupportedFormat(pathExtension: ext) {
+                failures.append(ImportFailure(path: path, reason: unsupported.reason))
+            } else if ext == "zip" {
+                failures.append(ImportFailure(path: path, reason: "Zip archives inside folders aren't opened. Import the zip on its own."))
+            } else if pickedDirectly {
+                failures.append(ImportFailure(path: path, reason: "This isn't an audio file Ear Reader can play."))
+            }
+        }
+
+        var names: Set<String> = []
+        for item in items {
+            let name = unique(item.lastPathComponent, in: &names)
+            guard (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else {
+                consider(item, path: name, pickedDirectly: true)
+                continue
+            }
+            let base = item.resolvingSymlinksInPath().pathComponents.count
+            let files = FileManager.default.enumerator(
+                at: item,
+                includingPropertiesForKeys: [.isRegularFileKey],
+                options: .skipsHiddenFiles,
+            )
+            while let file = files?.nextObject() as? URL {
+                guard (try? file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else { continue }
+                let relative = file.resolvingSymlinksInPath().pathComponents.dropFirst(base).joined(separator: "/")
+                consider(file, path: "\(name)/\(relative)", pickedDirectly: false)
+            }
+        }
+        return plan
+    }
+
+    /// `"Book"`, then `"Book 2"`, `"Book 3"`… keeping the extension.
+    static func unique(_ name: String, in names: inout Set<String>) -> String {
+        var candidate = name, number = 1
+        while names.contains(candidate) {
+            number += 1
+            let ext = (name as NSString).pathExtension
+            let stem = (name as NSString).deletingPathExtension
+            candidate = ext.isEmpty ? "\(stem) \(number)" : "\(stem) \(number).\(ext)"
+        }
+        names.insert(candidate)
+        return candidate
     }
 }
