@@ -11,7 +11,8 @@
 | Minimum OS | **iOS 26** (Xcode 26, Swift 6.2) |
 | Visual language | Liquid Glass (system glass for navigation and controls, solid content layer) |
 | Language | Swift only |
-| Imports | Always **copied** into the app container |
+| Imports | Always **copied** into the library folder |
+| iCloud | Syncs the **whole library**: audio (iCloud Drive), book records, progress, bookmarks and collections. A book imported on one device plays and resumes on another |
 | Out of scope for v1 | Audiobookshelf/Plex/WebDAV servers, Ogg/Opus playback, DRM formats |
 | Apple Developer account | Live |
 
@@ -25,7 +26,7 @@ See [ROADMAP.md](ROADMAP.md) for the task-level breakdown.
 |---|---|---|
 | Language / UI | Swift 6.2 (strict concurrency, approachable-concurrency defaults with main-actor isolation for the app target), SwiftUI, `@Observable` | Background audio, Now Playing, CarPlay, Liquid Glass and AVFoundation chapter APIs are first-class in native code |
 | Minimum OS | iOS 26 | Liquid Glass APIs (`glassEffect`, `GlassEffectContainer`, `tabViewBottomAccessory`), latest SwiftData, App Intents and Control Center controls. No availability checks needed |
-| Persistence | SwiftData (optional CloudKit mirror for progress/bookmarks) | Simple models, sync for free later |
+| Persistence | SwiftData, mirrored to CloudKit (private database); audio files in the app's iCloud Drive container | Position can only sync if the book it belongs to syncs too, so records and audio sync together |
 | Playback | AVFoundation (`AVQueuePlayer`), plus an `AVAudioEngine`-based decoder engine for non-native formats | See §3 |
 | System integration | MediaPlayer (`MPNowPlayingInfoCenter`, `MPRemoteCommandCenter`), CarPlay, WidgetKit, App Intents | |
 | Project generation | **XcodeGen** (`project.yml`, with the `.xcodeproj` git-ignored) | No `.pbxproj` merge conflicts; deterministic CI |
@@ -168,6 +169,7 @@ protocol PlaybackEngine: AnyObject, Sendable {
   - route changes: pause when headphones or Bluetooth disconnect
   - media services reset: rebuild the engine
 - **Now Playing / remote commands**: play/pause/toggle, skip ±N (uses the user's intervals), change playback position (scrubbing from the lock screen), next/previous track mapped to **chapter** navigation, playback rate. Now Playing shows the chapter title, with book title and author as the subtitle. Elapsed time is either per chapter or per book (a setting).
+- **iCloud audio**: before loading a file the engine asks for a local copy (`startDownloadingUbiquitousItem`) and waits for it; the next file is fetched ahead.
 - **Persistence of position**: saved every 5 s while playing, plus on pause, scene background, interruption and termination. Each save writes `(bookID, globalPosition, updatedAt)`.
 - **Smart rewind**: after resuming, rewind by 0 s (pause < 1 min), 5 s (< 10 min), 15 s (< 1 h) or 30 s (≥ 1 h). Configurable.
 
@@ -176,13 +178,13 @@ protocol PlaybackEngine: AnyObject, Sendable {
 ## 5. Feature list
 
 ### Library and import
-- Import from the Files app: a document picker for files **and folders**. Everything is **copied** into `Application Support/Library/<bookID>/`, with security-scoped access held only for the duration of the copy
+- Import from the Files app: a document picker for files **and folders**. Everything is **copied** into `<library>/<bookID>/`, with security-scoped access held only for the duration of the copy. `<library>` is `Library/` in the app's iCloud Drive container when iCloud is available, else `Application Support/Library/`
 - "Open in…" / share sheet, AirDrop, and Finder file sharing (`UIFileSharingEnabled`, `LSSupportsOpeningDocumentsInPlace`). A watched `Documents/Inbox` folder is auto-imported.
 - Zip import
 - Background import queue with progress. Durations are probed lazily, so a large library imports quickly.
 - Library views: **Titles / Authors / Series / Narrators / Collections** tabs (like Audible), grid ↔ list, sort (recent, title, author, progress, date added), filters (not started / in progress / finished / downloaded), search
 - User collections (playlists of books), mark as finished/unfinished, reset progress
-- Delete audio but keep the progress record; storage usage screen
+- Remove download (evict the local copy; it stays in iCloud and downloads again on play) or delete a book everywhere; storage usage screen
 
 ### Player
 - Mini player in the tab bar's bottom accessory (`tabViewBottomAccessory`), which shrinks inline when the tab bar minimizes on scroll. Tapping it opens the full player with a zoom navigation transition.
@@ -202,7 +204,7 @@ protocol PlaybackEngine: AnyObject, Sendable {
 - **CarPlay** audio app (needs the `com.apple.developer.carplay-audio` entitlement, requested from Apple): Continue Listening, Library, chapters
 - **Widgets**: Home and Lock Screen "Continue Listening" with an interactive play/pause (App Intents)
 - **App Intents / Siri / Shortcuts**: "Resume my audiobook", "Play \<title\>", "Set sleep timer", "Skip back"
-- iCloud sync of progress, bookmarks and collections only (SwiftData + CloudKit; audio is never uploaded)
+- iCloud sync of the whole library: SwiftData + CloudKit for records, iCloud Drive for audio. Audio downloads on demand, so a second device only stores what it plays. Signing in later moves a local library into iCloud; signed out, everything stays local
 - *Later:* Apple Watch remote, Live Activity
 
 ### Stats and polish
@@ -380,7 +382,9 @@ The task-level breakdown is in [ROADMAP.md](ROADMAP.md).
 | Slow import of large libraries (1000s of files) | Lazy duration probing, batched SwiftData writes, background `ModelActor` |
 | CarPlay entitlement approval delay | Request early (during M3); the feature is behind a build flag |
 | Snapshot flakiness across Xcode versions | Pinned Xcode + simulator, snapshots recorded only in CI (a `record` workflow input) |
-| Storage use from copying large libraries | Storage screen, delete-audio-keep-progress, warn before importing more than the free space |
+| Storage use from copying large libraries | Storage screen, remove download (evict local audio), warn before importing more than the free space |
+| Audiobooks fill the user's iCloud storage (0.5–1 GB each) | Show iCloud usage on the storage screen; a clear error when iCloud is full, with the book kept locally |
+| Audio not downloaded yet on this device | Download state on every book; playback waits for (and shows) the download; prefetch the next file of the current book |
 | Glass rendering differs between simulator runs, which makes snapshots flaky | Snapshot tests use a small per-pixel tolerance; glass-heavy screens are also snapshotted with Reduce Transparency, which renders deterministically |
 | Signing breakage in CI | fastlane match readonly + App Store Connect API key, never Apple ID passwords |
 

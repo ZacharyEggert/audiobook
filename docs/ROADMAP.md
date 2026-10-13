@@ -86,8 +86,8 @@ M2 (parsing) is pure Swift and can be built in parallel with M1.
 |---|---|---|
 | 3.1 | `AudiobookCore` models (`Book`, `AudioFile`, `Chapter`) and `BookTimeline` 🧪 | Round-trip property tests |
 | 3.2 | Grouping heuristics: single file, folder, multi-disc, folder of m4bs, natural sort 🧪 | Table-driven tests of file trees → books |
-| 3.3 | SwiftData schema (`BookRecord`, `FileRecord`, `ChapterRecord`, `ProgressRecord`, `BookmarkRecord`, `CollectionRecord`, `MetadataOverride`) with a `VersionedSchema` from day one | In-memory store tests 🧪 |
-| 3.4 | Import pipeline on a `@ModelActor`: copy into `Application Support/Library/<bookID>/`, probe, group, persist, report progress; cleans up on failure 🧪 | Importing each fixture gives the expected book |
+| 3.3 | SwiftData schema (`BookRecord`, `FileRecord`, `ChapterRecord`, `ProgressRecord`, `BookmarkRecord`, `CollectionRecord`, `MetadataOverride`) with a `VersionedSchema` from day one, CloudKit-compatible (no unique attributes, defaults, optional relationships) | In-memory store tests 🧪 |
+| 3.4 | Import pipeline on a `@ModelActor`: copy into `<library>/<bookID>/`, probe, group, persist, report progress; cleans up on failure 🧪 | Importing each fixture gives the expected book |
 | 3.5 | Entry points: `.fileImporter` (files and folders, multiple), "Open in…" / share sheet, Finder file sharing via `Documents/Inbox` scan at launch and on foreground | Each path imports |
 | 3.6 | Zip import via ZIPFoundation 🧪 | `book.zip` imports |
 | 3.7 | Cover pipeline: extract, downscale to 3 sizes, disk cache, generated placeholder | — |
@@ -95,7 +95,7 @@ M2 (parsing) is pure Swift and can be built in parallel with M1.
 | 3.9 | Authors / Series / Narrators / Collections tabs | — |
 | 3.10 | Book detail screen (backdrop extension, metadata, chapters, files) | — |
 | 3.11 | Import progress UI (toolbar progress + a list of failures with reasons) | — |
-| 3.12 | Storage screen in Settings, plus delete book / delete audio but keep progress | — |
+| 3.12 | Storage screen in Settings, plus delete book / remove download (evict local audio, keep the book) | — |
 
 *Learn:* SwiftData (`@Model`, `@Query`, `ModelActor`), Swift concurrency (`async`/`await`, actors, `TaskGroup`), the file system sandbox, security-scoped URLs.
 
@@ -156,7 +156,7 @@ M2 (parsing) is pure Swift and can be built in parallel with M1.
 | 6.3 | Widgets extension: Continue Listening (Home + Lock Screen) with an interactive play/pause intent; shared App Group container for the data | — |
 | 6.4 | Control Center control (iOS 26 `ControlWidget`): play/pause current book | — |
 | 6.5 | CarPlay scene: Continue Listening, Library list, chapters, Now Playing template | Works in the CarPlay simulator |
-| 6.6 | iCloud sync of progress, bookmarks and collections (a separate SwiftData configuration with CloudKit; audio stays local). Conflict rule: the newest `updatedAt` wins for position 🧪 | Progress moves between two devices |
+| 6.6 | iCloud sync of the whole library: SwiftData CloudKit mirror (`iCloud.llc.ex-nihilo.audiobook`), library folder in the iCloud Drive container, download on demand with per-book download state, local fallback when signed out and migration into iCloud on sign-in. Conflict rule: the newest `updatedAt` wins for position 🧪 | A book imported on one device plays on another and resumes at the same position |
 
 *Learn:* App extensions, App Groups, WidgetKit timelines, App Intents, CloudKit basics.
 

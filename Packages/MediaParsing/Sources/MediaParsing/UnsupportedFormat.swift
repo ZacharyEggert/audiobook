@@ -16,11 +16,22 @@ public enum UnsupportedFormat: Error, Equatable, Sendable {
         }
     }
 
+    /// From the extension alone, so an importer can skip the file without copying it. Nil for anything else.
+    public init?(pathExtension: String) {
+        switch pathExtension.lowercased() {
+        case "aax", "aaxc": self = .audible
+        case "ogg", "oga": self = .oggVorbis
+        case "opus": self = .opus
+        case "wma": self = .wma
+        default: return nil
+        }
+    }
+
     /// Checks the signature, plus the extension for Audible (whose files are otherwise MP4).
     /// ponytail: FairPlay-protected iTunes .m4b (`drms` sample entry) isn't detected; it would fail at playback.
     static func detect(_ data: Data, pathExtension: String) -> UnsupportedFormat? {
         let head = Data(data.prefix(64))
-        if ["aax", "aaxc"].contains(pathExtension.lowercased()) || (head.count >= 12 && Data(head[4 ..< 11]).latin1 == "ftypaax") {
+        if UnsupportedFormat(pathExtension: pathExtension) == .audible || (head.count >= 12 && Data(head[4 ..< 11]).latin1 == "ftypaax") {
             return .audible
         }
         if head.starts(with: Data("OggS".utf8)) {
