@@ -53,13 +53,9 @@ jobs:
           fi
           echo "Releasing $VERSION (last tag: ${last:-none})"
 
-  # Never ship red.
-  test:
-    needs: validate
-    uses: ./.github/workflows/ci.yml
-
+  # No test run: master only changes through a PR that passed CI.
   release:
-    needs: test
+    needs: validate
     runs-on: macos-26
     environment: production
     permissions:

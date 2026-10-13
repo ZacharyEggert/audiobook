@@ -1,15 +1,11 @@
 name: CI
 
+# PRs only: macOS minutes bill at 10x on a private repo, and master only changes through a green PR.
 on:
   pull_request:
-  push:
-    branches: [master]
-  workflow_call:
 
-# github.workflow is the caller's name under workflow_call, so a release's
-# test run never cancels (or is cancelled by) CI on the same branch.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -17,16 +13,16 @@ env:
   SIMULATOR: "platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5"
 
 jobs:
+  # Linux, so it costs 1x. Pinned to the local brew versions; bump together.
   lint:
-    runs-on: macos-26
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - run: brew install swiftlint swiftformat
-      - run: swiftformat --lint .
-      - run: swiftlint --strict
+      - run: docker run --rm -v "$PWD:/work" -w /work ghcr.io/nicklockwood/swiftformat:0.63.1 --lint .
+      - run: docker run --rm -v "$PWD:/work" -w /work ghcr.io/realm/swiftlint:0.65.1 --strict
 
-  # One job (not a matrix) so the required check name stays "package-tests".
-  package-tests:
+  # Packages and app in one macOS job, to pay for one runner start and checkout.
+  test:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v5
@@ -38,12 +34,6 @@ jobs:
             swift test --package-path "$pkg" --enable-code-coverage
             echo "::endgroup::"
           done
-
-  app-tests:
-    runs-on: macos-26
-    steps:
-      - uses: actions/checkout@v5
-      - run: sudo xcode-select -s "/Applications/Xcode_$(cat .xcode-version).app"
       - run: brew install xcodegen && xcodegen generate
       - run: |
           set -o pipefail
