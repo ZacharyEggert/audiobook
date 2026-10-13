@@ -59,6 +59,7 @@ public actor LibraryImporter: ModelActor {
     static let imageExtensions: Set = ["jpg", "jpeg", "png"]
     private static let batchSize = 20
 
+    /// ponytail: local until M6, which moves the library into the iCloud Drive container so audio syncs with the store.
     public static var defaultRoot: URL {
         .applicationSupportDirectory.appending(path: "Library", directoryHint: .isDirectory)
     }

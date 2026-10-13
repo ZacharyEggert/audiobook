@@ -204,7 +204,7 @@ func `cancelling leaves no orphans`(phase: ImportProgress.Phase) async throws {
     defer { harness.remove() }
     _ = try await harness.importer.importItems([fixture("vbr.mp3"), fixture("vbr.mp3")])
     // Loose short files are one book, like a folder of them
-    #expect(try Set(#require(harness.books().only).files.map(\.relativePath)) == ["vbr.mp3", "vbr 2.mp3"])
+    #expect(try Set(#require(harness.books().only).orderedFiles.map(\.relativePath)) == ["vbr.mp3", "vbr 2.mp3"])
 }
 
 private extension Array {

@@ -75,7 +75,7 @@ private func sampleBook(in context: ModelContext) -> BookRecord {
     #expect(try ModelContext(container).fetch(FetchDescriptor<CollectionRecord>()).first?.bookIDs.count == 2)
 }
 
-@Test func `persists to disk in two stores`() throws {
+@Test func `persists to disk`() throws {
     let directory = FileManager.default.temporaryDirectory.appending(path: "store-\(UUID())")
     defer { try? FileManager.default.removeItem(at: directory) }
     do {
@@ -87,6 +87,18 @@ private func sampleBook(in context: ModelContext) -> BookRecord {
     let context = try ModelContext(LibraryStore.makeContainer(directory: directory))
     #expect(try context.fetchCount(FetchDescriptor<BookRecord>()) == 1)
     #expect(try context.fetchCount(FetchDescriptor<ProgressRecord>()) == 1)
-    #expect(FileManager.default.fileExists(atPath: directory.appending(path: "Local.store").path))
-    #expect(FileManager.default.fileExists(atPath: directory.appending(path: "Synced.store").path))
+}
+
+/// The rules CloudKit mirroring enforces at container creation, checked here because tests can't enable CloudKit.
+@Test func `schema is CloudKit compatible`() {
+    for entity in Schema(versionedSchema: LibrarySchemaV1.self).entities {
+        #expect(entity.uniquenessConstraints.isEmpty, "\(entity.name) has a unique constraint")
+        for relationship in entity.relationships {
+            #expect(relationship.isOptional, "\(entity.name).\(relationship.name) isn't optional")
+        }
+        for attribute in entity.attributes {
+            #expect(attribute.isOptional || attribute.defaultValue != nil, "\(entity.name).\(attribute.name) has no default")
+            #expect(!attribute.isUnique, "\(entity.name).\(attribute.name) is unique")
+        }
+    }
 }

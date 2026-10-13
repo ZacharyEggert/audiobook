@@ -4,31 +4,28 @@ import SwiftData
 
 /// Version 1 of the library store. To change a model, copy it into a `LibrarySchemaV2`, point the typealiases there,
 /// and add a stage to `LibraryMigrationPlan`.
+///
+/// The whole library mirrors to iCloud from M6 (the audio itself syncs through iCloud Drive), so every model follows
+/// CloudKit's rules: no unique attributes, every property optional or defaulted, every relationship optional.
+/// Progress, bookmarks and collections name books by `bookID` rather than a relationship, so they outlive a book's audio.
 public enum LibrarySchemaV1: VersionedSchema {
     public static var versionIdentifier: Schema.Version {
         Schema.Version(1, 0, 0)
     }
 
     public static var models: [any PersistentModel.Type] {
-        localModels + syncedModels
-    }
-
-    /// Stay on this device: what was imported and read from the audio.
-    public static var localModels: [any PersistentModel.Type] {
-        [BookRecord.self, FileRecord.self, ChapterRecord.self, MetadataOverride.self]
-    }
-
-    /// Mirrored to iCloud from M6, so they follow CloudKit's rules: no unique attributes, every property optional or
-    /// defaulted, and no relationships to local models (they name books by `bookID`, which also lets them outlive the audio).
-    public static var syncedModels: [any PersistentModel.Type] {
-        [ProgressRecord.self, BookmarkRecord.self, CollectionRecord.self]
+        [
+            BookRecord.self, FileRecord.self, ChapterRecord.self, MetadataOverride.self,
+            ProgressRecord.self, BookmarkRecord.self, CollectionRecord.self,
+        ]
     }
 
     @Model public final class BookRecord {
-        @Attribute(.unique) public var id: UUID
-        public var title: String
-        public var authors: [String]
-        public var narrators: [String]
+        /// Also names the book's folder in the library, on every device.
+        public var id = UUID()
+        public var title = ""
+        public var authors: [String] = []
+        public var narrators: [String] = []
         public var series: String?
         public var seriesIndex: Double?
         public var summary: String?
@@ -37,14 +34,14 @@ public enum LibrarySchemaV1: VersionedSchema {
         public var publisher: String?
         /// Relative to the library folder.
         public var coverRef: String?
-        public var duration: TimeInterval
-        public var dateAdded: Date
+        public var duration: TimeInterval = 0
+        public var dateAdded = Date.distantPast
         /// Album or artist tags disagreed at import, so the grouping may be wrong.
-        public var needsReview: Bool
-        /// Unordered; see `orderedFiles`.
-        @Relationship(deleteRule: .cascade, inverse: \FileRecord.book) public var files: [FileRecord] = []
+        public var needsReview = false
+        /// Unordered; see `orderedFiles`. Optional, as CloudKit requires.
+        @Relationship(deleteRule: .cascade, inverse: \FileRecord.book) public var files: [FileRecord]? = []
         /// Unordered; see `orderedChapters`.
-        @Relationship(deleteRule: .cascade, inverse: \ChapterRecord.book) public var chapters: [ChapterRecord] = []
+        @Relationship(deleteRule: .cascade, inverse: \ChapterRecord.book) public var chapters: [ChapterRecord]? = []
         /// The user's edits, kept apart so a re-scan doesn't overwrite them.
         @Relationship(deleteRule: .cascade, inverse: \MetadataOverride.book) public var override: MetadataOverride?
 
@@ -71,12 +68,12 @@ public enum LibrarySchemaV1: VersionedSchema {
     }
 
     @Model public final class FileRecord {
-        public var index: Int
+        public var index = 0
         /// Relative to the book's folder.
-        public var relativePath: String
-        public var duration: TimeInterval
-        public var globalOffset: TimeInterval
-        public var format: String
+        public var relativePath = ""
+        public var duration: TimeInterval = 0
+        public var globalOffset: TimeInterval = 0
+        public var format = ""
         public var book: BookRecord?
 
         public init(index: Int, relativePath: String, duration: TimeInterval, globalOffset: TimeInterval, format: String) {
@@ -89,10 +86,10 @@ public enum LibrarySchemaV1: VersionedSchema {
     }
 
     @Model public final class ChapterRecord {
-        public var index: Int
-        public var title: String
-        public var start: TimeInterval
-        public var end: TimeInterval
+        public var index = 0
+        public var title = ""
+        public var start: TimeInterval = 0
+        public var end: TimeInterval = 0
         public var book: BookRecord?
 
         public init(index: Int, title: String, start: TimeInterval, end: TimeInterval) {
@@ -195,35 +192,29 @@ public enum LibraryMigrationPlan: SchemaMigrationPlan {
 }
 
 public enum LibraryStore {
-    /// Local and synced models live in separate stores, so M6 can turn on CloudKit for the synced one alone.
-    /// - Parameter directory: Where the two `.store` files go; nil keeps both in memory (tests, previews).
+    /// - Parameter directory: Where `Library.store` goes; nil keeps it in memory (tests, previews).
+    /// ponytail: `cloudKitDatabase: .none` until M6 adds the iCloud entitlements and switches it to `.private`.
     public static func makeContainer(directory: URL? = .applicationSupportDirectory) throws -> ModelContainer {
-        func configuration(_ name: String, _ models: [any PersistentModel.Type]) -> ModelConfiguration {
-            let schema = Schema(models)
-            guard let directory else {
-                return ModelConfiguration(name, schema: schema, isStoredInMemoryOnly: true)
-            }
-            return ModelConfiguration(name, schema: schema, url: directory.appending(path: "\(name).store"), cloudKitDatabase: .none)
+        let schema = Schema(versionedSchema: LibrarySchemaV1.self)
+        let configuration = if let directory {
+            ModelConfiguration("Library", schema: schema, url: directory.appending(path: "Library.store"), cloudKitDatabase: .none)
+        } else {
+            ModelConfiguration("Library", schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         }
         if let directory {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         }
-        return try ModelContainer(
-            for: Schema(versionedSchema: LibrarySchemaV1.self),
-            migrationPlan: LibraryMigrationPlan.self,
-            configurations: configuration("Local", LibrarySchemaV1.localModels),
-            configuration("Synced", LibrarySchemaV1.syncedModels),
-        )
+        return try ModelContainer(for: schema, migrationPlan: LibraryMigrationPlan.self, configurations: configuration)
     }
 }
 
 public extension BookRecord {
     var orderedFiles: [FileRecord] {
-        files.sorted { $0.index < $1.index }
+        (files ?? []).sorted { $0.index < $1.index }
     }
 
     var orderedChapters: [ChapterRecord] {
-        chapters.sorted { $0.index < $1.index }
+        (chapters ?? []).sorted { $0.index < $1.index }
     }
 
     /// The book with the user's overrides applied, for playback and display.
