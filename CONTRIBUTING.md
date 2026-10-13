@@ -45,7 +45,7 @@ swiftlint --strict     # must report 0 violations
 
 ## Pull requests
 
-`master` is protected. Open a PR from a branch. CI must pass `lint`, `package-tests` and `app-tests` before merging. See [docs/ROADMAP.md](docs/ROADMAP.md) for the task list; each task is one PR.
+`master` is protected. Open a PR from a branch. CI must pass `lint` and `test` before merging. See [docs/ROADMAP.md](docs/ROADMAP.md) for the task list; each task is one PR.
 
 ## Releasing
 
@@ -65,9 +65,8 @@ The version you pass sets `MARKETING_VERSION`. The build number is the latest Te
 
 ### From GitHub Actions
 
-Actions → **Release** → Run workflow on `master`, with a version, a destination (`testflight` or `app-store-review`) and release notes. The workflow:
+Actions → **Release** → Run workflow on `master` (it doesn't re-run CI, since every merge passed it), with a version, a destination (`testflight` or `app-store-review`) and release notes. The workflow:
 
 1. checks the version is `X.Y.Z` and greater than the last `v*` tag
-2. runs the full CI suite (`ci.yml` via `workflow_call`)
-3. runs `fastlane release` in the `production` environment, which holds the secrets (`ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8_BASE64`, `MATCH_PASSWORD`, `MATCH_GIT_URL`, `MATCH_DEPLOY_KEY`)
-4. tags `v<version>` and creates a GitHub Release with the notes and the zipped dSYMs
+2. runs `fastlane release` in the `production` environment, which holds the secrets (`ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8_BASE64`, `MATCH_PASSWORD`, `MATCH_GIT_URL`, `MATCH_DEPLOY_KEY`)
+3. tags `v<version>` and creates a GitHub Release with the notes and the zipped dSYMs

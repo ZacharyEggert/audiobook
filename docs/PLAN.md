@@ -283,20 +283,16 @@ Coverage target: ≥ 90% for `MediaParsing`/`AudiobookCore`, ≥ 60% overall.
 
 ## 8. CI — `.github/workflows/ci.yml`
 
-Runs on `pull_request` and pushes to `master`. `concurrency: ci-${{ github.ref }}` with `cancel-in-progress: true`.
+Runs on `pull_request` only (macOS minutes bill at 10× on a private repo). `concurrency: ci-${{ github.ref }}` with `cancel-in-progress: true`.
 
 ```yaml
 jobs:
-  lint:            # macos-latest
-    - brew install swiftlint swiftformat
+  lint:            # ubuntu-latest, pinned swiftformat/swiftlint Docker images
     - swiftformat --lint . && swiftlint --strict
 
-  package-tests:   # macos-latest, matrix over Packages/*
+  test:            # macos-26, one job: packages then app
     - sudo xcode-select -s /Applications/Xcode_26.<pinned>.app   # iOS 26 SDK needs Xcode 26 (macos-26 runner image)
-    - swift test --package-path Packages/${{ matrix.pkg }} --enable-code-coverage
-    # MediaParsing & AudiobookCore are Foundation-only → also run on ubuntu-latest (cheap, fast)
-
-  app-tests:       # macos-latest
+    - swift test --package-path Packages/<each> --enable-code-coverage
     - cache: ~/Library/Developer/Xcode/DerivedData/**/SourcePackages, keyed on Package.resolved
     - brew install xcodegen && xcodegen generate
     - xcodebuild test
@@ -309,7 +305,7 @@ jobs:
 ```
 
 - The Xcode version and simulator are pinned in one place (`.xcode-version`, plus an env var in the workflow) so snapshots stay deterministic.
-- Branch protection on `master` requires `lint`, `package-tests` and `app-tests`.
+- Branch protection on `master` requires `lint` and `test`.
 - Optional: a PR comment with a coverage summary via `xcrun xccov`.
 
 ---
@@ -326,9 +322,9 @@ on:
       destination:  { type: choice, options: [testflight, app-store-review], default: testflight }
       release_notes:{ description: "What's new (TestFlight/App Store + GitHub Release)", required: true }
 jobs:
-  test:      # reuses ci.yml via workflow_call — never ship red
+  validate:  # version is X.Y.Z and > last tag; no CI re-run, master only changes through a green PR
   release:
-    needs: test
+    needs: validate
     environment: production        # required reviewer = manual approval gate
     runs-on: macos-latest
     steps:
