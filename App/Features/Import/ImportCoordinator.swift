@@ -7,7 +7,8 @@ import SwiftData
 @Observable final class ImportCoordinator {
     private(set) var isImporting = false
     private(set) var progress: ImportProgress?
-    private(set) var lastSummary: ImportSummary?
+    /// What imports since the results were last dismissed brought in or turned away. Nil when there's nothing to show.
+    var results: ImportSummary?
     var lastError: String?
 
     private let importer: LibraryImporter
@@ -57,7 +58,11 @@ import SwiftData
                 for try await event in importer.importEvents(urls, removingSources: removingSources) {
                     switch event {
                     case let .progress(update): progress = update
-                    case let .finished(summary): lastSummary = summary
+                    case let .finished(summary) where !summary.bookIDs.isEmpty || !summary.failures.isEmpty:
+                        results = ImportSummary(
+                            bookIDs: (results?.bookIDs ?? []) + summary.bookIDs, failures: (results?.failures ?? []) + summary.failures,
+                        )
+                    case .finished: break
                     }
                 }
             } catch {

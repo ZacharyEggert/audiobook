@@ -4,6 +4,7 @@ import Foundation
 import MediaParsing
 import SwiftData
 import Testing
+import ZIPFoundation
 
 /// An importer over a temporary library folder and an in-memory store.
 private struct Harness {
@@ -80,6 +81,9 @@ private let cases: [ImportCase] = [
         items: ["multi-disc"], title: "Multi Disc Fixture", files: ["CD1/01.mp3", "CD1/02.mp3", "CD2/01.mp3", "CD2/02.mp3"],
         chapters: ["Disc 1 Track 1", "Disc 1 Track 2", "Disc 2 Track 1", "Disc 2 Track 2"], duration: 8,
     ),
+    ImportCase(
+        items: ["book.zip"], title: "Zip Fixture", files: ["01.mp3", "02.mp3"], chapters: ["Zip One", "Zip Two"], duration: 4,
+    ),
 ]
 
 @Test(arguments: cases)
@@ -131,10 +135,10 @@ func `imports each fixture as the expected book`(expected: ImportCase) async thr
     try Data("x".utf8).write(to: aax)
     try Data("x".utf8).write(to: notes)
 
-    let summary = try await harness.importer.importItems([fixture("corrupt.m4b"), fixture("book.zip"), aax, notes, fixture("vbr.mp3")])
+    let summary = try await harness.importer.importItems([fixture("corrupt.m4b"), aax, notes, fixture("vbr.mp3")])
 
     #expect(summary.bookIDs.count == 1)
-    #expect(summary.failures.map(\.path).sorted() == ["book.zip", "corrupt.m4b", "drm.aax", "notes.txt"])
+    #expect(summary.failures.map(\.path).sorted() == ["corrupt.m4b", "drm.aax", "notes.txt"])
     #expect(summary.failures.first { $0.path == "drm.aax" }?.reason == UnsupportedFormat.audible.reason)
     #expect(try harness.books().map(\.title) == ["vbr"])
 }
@@ -205,6 +209,48 @@ func `cancelling leaves no orphans`(phase: ImportProgress.Phase) async throws {
     _ = try await harness.importer.importItems([fixture("vbr.mp3"), fixture("vbr.mp3")])
     // Loose short files are one book, like a folder of them
     #expect(try Set(#require(harness.books().only).orderedFiles.map(\.relativePath)) == ["vbr.mp3", "vbr 2.mp3"])
+}
+
+@Test func `rejects a zip with an entry outside it`() async throws {
+    let harness = try Harness()
+    defer { harness.remove() }
+    let sources = try scratch()
+    defer { try? FileManager.default.removeItem(at: sources) }
+    let zip = sources.appending(path: "evil.zip")
+    let audio = try Data(contentsOf: fixture("vbr.mp3"))
+    let archive = try Archive(url: zip, accessMode: .create)
+    for path in ["Book/01.mp3", "../escaped.mp3"] {
+        try archive.addEntry(with: path, type: .file, uncompressedSize: Int64(audio.count)) { position, size in
+            audio.subdata(in: Int(position) ..< Int(position) + size)
+        }
+    }
+
+    let summary = try await harness.importer.importItems([zip, fixture("chapters.m4b")])
+
+    #expect(summary.failures.map(\.path) == ["evil.zip"])
+    #expect(try harness.books().map(\.title) == ["Chapters Fixture"])
+    #expect(!FileManager.default.fileExists(atPath: harness.root.deletingLastPathComponent().appending(path: "escaped.mp3").path))
+    #expect(!harness.contents().contains { $0.hasPrefix(".staging/") })
+}
+
+@Test func `ignores __MACOSX in a zip`() async throws {
+    let harness = try Harness()
+    defer { harness.remove() }
+    let sources = try scratch()
+    defer { try? FileManager.default.removeItem(at: sources) }
+    let zip = sources.appending(path: "mac.zip")
+    let audio = try Data(contentsOf: fixture("vbr.mp3"))
+    let archive = try Archive(url: zip, accessMode: .create)
+    for path in ["Book/01.mp3", "__MACOSX/Book/._01.mp3"] {
+        try archive.addEntry(with: path, type: .file, uncompressedSize: Int64(audio.count)) { position, size in
+            audio.subdata(in: Int(position) ..< Int(position) + size)
+        }
+    }
+
+    let summary = try await harness.importer.importItems([zip])
+
+    #expect(summary.failures == [])
+    #expect(try harness.books().only?.orderedFiles.map(\.relativePath) == ["01.mp3"])
 }
 
 private extension Array {

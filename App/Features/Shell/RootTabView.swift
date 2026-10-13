@@ -2,6 +2,7 @@ import Library
 import SwiftUI
 
 struct RootTabView: View {
+    @Environment(ImportCoordinator.self) private var imports
     @State private var searchText = ""
 
     var body: some View {
@@ -16,7 +17,7 @@ struct RootTabView: View {
                 PlaceholderScreen(title: "Stats", systemImage: "chart.bar")
             }
             Tab("Settings", systemImage: "gearshape") {
-                PlaceholderScreen(title: "Settings", systemImage: "gearshape")
+                SettingsScreen()
             }
             Tab(role: .search) {
                 NavigationStack {
@@ -29,6 +30,20 @@ struct RootTabView: View {
         .tabBarMinimizeBehavior(.onScrollDown)
         .tabViewBottomAccessory {
             MiniPlayerPlaceholder()
+        }
+        .sheet(isPresented: Binding { imports.results != nil } set: {
+            if !$0 {
+                imports.results = nil
+            }
+        }) {
+            if let results = imports.results {
+                ImportResultsSheet(summary: results)
+            }
+        }
+        .alert("Import Failed", isPresented: Binding { imports.lastError != nil } set: { _ in imports.lastError = nil }) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(imports.lastError ?? "")
         }
     }
 }
