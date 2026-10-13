@@ -17,7 +17,7 @@ struct RootTabView: View {
                 PlaceholderScreen(title: "Stats", systemImage: "chart.bar")
             }
             Tab("Settings", systemImage: "gearshape") {
-                PlaceholderScreen(title: "Settings", systemImage: "gearshape")
+                SettingsScreen()
             }
             Tab(role: .search) {
                 NavigationStack {
