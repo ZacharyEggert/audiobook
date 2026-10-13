@@ -32,7 +32,7 @@ struct LibraryScreen: View {
             Group {
                 switch tab {
                 case .titles: TitlesView(isPicking: $isPicking)
-                default: ContentUnavailableView(tab.label, systemImage: "books.vertical", description: Text("Coming soon"))
+                default: GroupListView(tab: tab)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -55,6 +55,7 @@ struct LibraryScreen: View {
                     }
                 }
             }
+            .navigationDestination(for: LibraryGroup.self) { GroupBooksScreen(group: $0) }
             .fileImporter(isPresented: $isPicking, allowedContentTypes: [.audio, .folder, .zip], allowsMultipleSelection: true) { result in
                 if case let .success(urls) = result {
                     imports.importPicked(urls)

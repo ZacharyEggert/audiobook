@@ -55,3 +55,37 @@ import Testing
         #expect(BookProgress(book: BookRecord(title: "", duration: 75), record: nil).summary == "1m")
     }
 }
+
+@MainActor struct LibraryGroupTests {
+    let container = try! LibraryStore.makeContainer(directory: nil) // swiftlint:disable:this force_try
+    let books: [BookRecord]
+
+    init() {
+        books = [
+            BookRecord(title: "Two", authors: ["Amy"], narrators: ["Ned"], series: "Saga", seriesIndex: 2),
+            BookRecord(title: "One", authors: ["Amy", "Bo"], series: "Saga", seriesIndex: 1),
+            BookRecord(title: "Extra", authors: ["Bo"], series: "Saga"),
+            BookRecord(title: "Loose"),
+        ]
+        books.forEach(container.mainContext.insert)
+    }
+
+    @Test func `groups with counts`() {
+        #expect(books.groups(.author).map { "\($0.name) \($0.count)" } == ["Amy 2", "Bo 2", "Unknown Author 1"])
+        #expect(books.groups(.narrator).map { "\($0.name) \($0.count)" } == ["Ned 1", "Unknown Narrator 3"])
+        #expect(books.groups(.series).map { "\($0.name) \($0.count)" } == ["Saga 3"])
+    }
+
+    @Test func `drills into a group`() {
+        let saga = LibraryGroup(kind: .series, name: "Saga")
+        #expect(books.books(in: saga, collections: []).map(\.title) == ["One", "Two", "Extra"])
+        let unknown = LibraryGroup(kind: .author, name: "Unknown Author")
+        #expect(books.books(in: unknown, collections: []).map(\.title) == ["Loose"])
+    }
+
+    @Test func `keeps a collection's order and skips missing books`() {
+        let collection = CollectionRecord(name: "Faves", bookIDs: [books[3].id, UUID(), books[0].id])
+        let group = LibraryGroup(kind: .collection(collection.id), name: "Faves")
+        #expect(books.books(in: group, collections: [collection]).map(\.title) == ["Loose", "Two"])
+    }
+}
