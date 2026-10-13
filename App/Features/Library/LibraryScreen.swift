@@ -49,7 +49,7 @@ struct LibraryScreen: View {
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     if imports.isImporting {
-                        ProgressView()
+                        ImportProgressView(progress: imports.progress)
                     } else {
                         Button("Import", systemImage: "plus") { isPicking = true }
                     }
@@ -61,11 +61,6 @@ struct LibraryScreen: View {
                 if case let .success(urls) = result {
                     imports.importPicked(urls)
                 }
-            }
-            .alert("Import Failed", isPresented: Binding { imports.lastError != nil } set: { _ in imports.lastError = nil }) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(imports.lastError ?? "")
             }
         }
     }

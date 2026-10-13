@@ -24,6 +24,11 @@ public struct ImportFailure: Equatable, Sendable {
 public struct ImportSummary: Equatable, Sendable {
     public var bookIDs: [UUID] = []
     public var failures: [ImportFailure] = []
+
+    public init(bookIDs: [UUID] = [], failures: [ImportFailure] = []) {
+        self.bookIDs = bookIDs
+        self.failures = failures
+    }
 }
 
 public enum ImportEvent: Equatable, Sendable {
