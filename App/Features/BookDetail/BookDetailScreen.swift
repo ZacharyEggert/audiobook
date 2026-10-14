@@ -1,10 +1,12 @@
 import Library
+import Playback
 import SwiftData
 import SwiftUI
 
 /// Cover extended behind the toolbar, metadata, description, chapters and files, with a floating Play button (PLAN §6).
 struct BookDetailScreen: View {
     let book: BookRecord
+    @Environment(PlayerController.self) private var player
     @Query private var progressRecords: [ProgressRecord]
     @State private var isSummaryExpanded = false
 
@@ -44,15 +46,36 @@ struct BookDetailScreen: View {
         .ignoresSafeArea(edges: .top)
         .navigationBarTitleDisplayMode(.inline)
         .overlay(alignment: .bottom) {
-            // ponytail: no action until the player lands in M4
-            Button {} label: {
-                Label(progress.status == .notStarted ? "Play" : "Resume", systemImage: "play.fill")
+            Button(action: play) {
+                Label(playLabel, systemImage: isCurrent && player.isPlaying ? "pause.fill" : "play.fill")
                     .font(.headline)
                     .padding(.horizontal, 24)
             }
             .buttonStyle(.glassProminent)
             .controlSize(.large)
             .padding(.bottom, 8)
+        }
+    }
+
+    private var isCurrent: Bool {
+        player.book?.id == book.id
+    }
+
+    private var playLabel: String {
+        if isCurrent {
+            player.isPlaying ? "Pause" : "Resume"
+        } else {
+            progress.status == .notStarted ? "Play" : "Resume"
+        }
+    }
+
+    /// Toggles the loaded book; otherwise loads this one where it was left (from the start once finished) and plays.
+    private func play() {
+        guard !isCurrent else { return player.toggle() }
+        let position = progress.status == .finished ? 0 : progress.position
+        Task {
+            await player.load(book.book, folder: LibraryFiles().folder(for: book.id), at: position)
+            player.play()
         }
     }
 

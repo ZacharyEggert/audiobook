@@ -19,7 +19,7 @@ struct EarReaderApp: App {
             fatalError("Couldn't open the library store: \(error)")
         }
         _imports = State(initialValue: ImportCoordinator(container: container))
-        let player = PlayerController(makeEngine: { FakeEngine() }) // M4 merge: swap for AVPlayerEngine()
+        let player = PlayerController(makeEngine: { AVPlayerEngine() })
         let context = container.mainContext
         player.onPositionSave = { PlaybackProgress.save(bookID: $0, position: $1, in: context) }
         player.onBookFinished = { id in PlaybackProgress.save(bookID: id, position: player.duration, finished: true, in: context) }

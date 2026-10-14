@@ -11,7 +11,8 @@ import Observation
     public private(set) var position: TimeInterval = 0
     public private(set) var state: PlaybackState = .idle
     public private(set) var chapter: Chapter?
-    public private(set) var lastError: String?
+    /// Set when loading or playing fails; the UI clears it once shown.
+    public var lastError: String?
     public var rate: Float = 1 {
         didSet {
             engine.rate = rate
