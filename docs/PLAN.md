@@ -152,12 +152,13 @@ All UI and persistence work in **global book time**. Only the engine deals with 
 ## 4. Playback engine
 
 ```swift
-protocol PlaybackEngine: AnyObject, Sendable {
-  func load(_ book: Book, at global: TimeInterval) async throws
+@MainActor protocol PlaybackEngine: AnyObject {
+  func load(_ book: Book, folder: URL, at global: TimeInterval) async throws
   func play(); func pause()
   func seek(to global: TimeInterval) async
   var rate: Float { get set }            // 0.5 … 3.5, step 0.05
-  var events: AsyncStream<PlaybackEvent> { get }  // time, state, chapter change, item end, error
+  var currentTime: TimeInterval { get }
+  var onEvent: ((PlaybackEvent) -> Void)? { get set }  // time, state, error; synchronous so tests needn't wait
 }
 ```
 
