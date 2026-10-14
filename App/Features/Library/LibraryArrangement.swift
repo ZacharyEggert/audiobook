@@ -81,6 +81,12 @@ struct BookProgress {
         let units: Set<Duration.UnitsFormatStyle.Unit> = seconds >= 60 ? [.hours, .minutes] : [.seconds]
         return Duration.seconds(max(seconds, 0).rounded()).formatted(.units(allowed: units, width: .narrow))
     }
+
+    /// A clock reading for the player: "4:05", or "1:02:05" from an hour up. Whole seconds, rounded down.
+    static func clock(_ seconds: TimeInterval) -> String {
+        let whole = seconds.isFinite ? Int(max(seconds, 0)) : 0
+        return Duration.seconds(whole).formatted(.time(pattern: whole >= 3600 ? .hourMinuteSecond : .minuteSecond))
+    }
 }
 
 extension [BookRecord] {

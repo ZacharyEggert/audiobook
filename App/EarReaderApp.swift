@@ -1,4 +1,5 @@
 import Library
+import Playback
 import SwiftData
 import SwiftUI
 
@@ -7,6 +8,7 @@ struct EarReaderApp: App {
     @Environment(\.scenePhase) private var scenePhase
     private let container: ModelContainer
     @State private var imports: ImportCoordinator
+    @State private var player = PlayerController(engine: FakeEngine()) // M4 merge: swap for AVPlayerEngine()
 
     init() {
         do {
@@ -22,6 +24,7 @@ struct EarReaderApp: App {
             RootTabView()
                 .tint(Theme.primary)
                 .environment(imports)
+                .environment(player)
                 .onOpenURL { imports.open($0) }
         }
         .modelContainer(container)

@@ -54,6 +54,15 @@ import Testing
         #expect(reading.status == .inProgress)
         #expect(BookProgress(book: BookRecord(title: "", duration: 75), record: nil).summary == "1m")
     }
+
+    @Test func `formats clock times`() {
+        #expect(BookProgress.clock(0) == "0:00")
+        #expect(BookProgress.clock(65.9) == "1:05")
+        #expect(BookProgress.clock(3599) == "59:59")
+        #expect(BookProgress.clock(3725) == "1:02:05")
+        #expect(BookProgress.clock(-4) == "0:00")
+        #expect(BookProgress.clock(.nan) == "0:00")
+    }
 }
 
 @MainActor struct LibraryGroupTests {
