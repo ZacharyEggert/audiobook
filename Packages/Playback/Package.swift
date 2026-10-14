@@ -5,8 +5,9 @@ let package = Package(
     name: "Playback",
     platforms: [.iOS(.v26), .macOS(.v26)],
     products: [.library(name: "Playback", targets: ["Playback"])],
+    dependencies: [.package(path: "../AudiobookCore")],
     targets: [
-        .target(name: "Playback"),
-        .testTarget(name: "PlaybackTests", dependencies: ["Playback"]),
+        .target(name: "Playback", dependencies: ["AudiobookCore"]),
+        .testTarget(name: "PlaybackTests", dependencies: ["Playback", "AudiobookCore"]),
     ],
 )

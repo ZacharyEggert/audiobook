@@ -1,9 +1,14 @@
 import Library
+import Playback
 import SwiftUI
 
 struct RootTabView: View {
     @Environment(ImportCoordinator.self) private var imports
+    @Environment(PlayerController.self) private var player
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var searchText = ""
+    @State private var isPlayerPresented = false
+    @Namespace private var playerTransition
 
     var body: some View {
         TabView {
@@ -28,8 +33,16 @@ struct RootTabView: View {
             }
         }
         .tabBarMinimizeBehavior(.onScrollDown)
-        .tabViewBottomAccessory {
-            MiniPlayerPlaceholder()
+        .miniPlayer(isEnabled: player.book != nil) {
+            MiniPlayerAccessory { isPlayerPresented = true }
+                .matchedTransitionSource(id: "player", in: playerTransition)
+        }
+        .fullScreenCover(isPresented: $isPlayerPresented) {
+            if reduceMotion {
+                FullPlayerScreen()
+            } else {
+                FullPlayerScreen().navigationTransition(.zoom(sourceID: "player", in: playerTransition))
+            }
         }
         .sheet(isPresented: Binding { imports.results != nil } set: {
             if !$0 {
@@ -44,6 +57,11 @@ struct RootTabView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(imports.lastError ?? "")
+        }
+        .alert("Playback Failed", isPresented: Binding { player.lastError != nil } set: { _ in player.lastError = nil }) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(player.lastError ?? "")
         }
     }
 }
@@ -66,25 +84,17 @@ private struct PlaceholderScreen: View {
     }
 }
 
-private struct MiniPlayerPlaceholder: View {
-    @Environment(\.tabViewBottomAccessoryPlacement) private var placement
-
-    var body: some View {
-        HStack(spacing: 12) {
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Theme.surfaceSecondary)
-                .frame(width: 32, height: 32)
-            VStack(alignment: .leading) {
-                Text("Nothing playing").font(.subheadline.bold())
-                if placement != .inline {
-                    Text("Import a book to start").font(.caption).foregroundStyle(Theme.textSecondary)
-                }
-            }
-            Spacer()
-            Image(systemName: "play.fill")
-                .accessibilityLabel("Play")
+private extension View {
+    /// The bottom accessory, removed when `isEnabled` is false.
+    @ViewBuilder func miniPlayer(isEnabled: Bool, @ViewBuilder content: () -> some View) -> some View {
+        if #available(iOS 26.1, *) {
+            tabViewBottomAccessory(isEnabled: isEnabled, content: content)
+        } else if isEnabled {
+            // ponytail: on 26.0 toggling rebuilds the TabView (tab selection resets); drop with a 26.1 deployment target
+            tabViewBottomAccessory(content: content)
+        } else {
+            self
         }
-        .padding(.horizontal)
     }
 }
 
@@ -93,5 +103,6 @@ private struct MiniPlayerPlaceholder: View {
     RootTabView()
         .tint(Theme.primary)
         .environment(ImportCoordinator(container: container))
+        .environment(PlayerController.preview())
         .modelContainer(container)
 }
