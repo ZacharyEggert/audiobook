@@ -78,7 +78,7 @@ struct FullPlayerScreen: View {
                 .foregroundStyle(Theme.textSecondary)
                 .accessibilityElement(children: .combine)
             }
-            TransportCluster()
+            TransportCluster(isShowingSleep: $isShowingSleep)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 24)
@@ -109,11 +109,6 @@ struct FullPlayerScreen: View {
             .accessibilityLabel("Speed")
             .accessibilityValue("\(player.rate.formatted()) times")
             Spacer()
-            Button("Sleep Timer", systemImage: player.sleepTimer.isActive ? "moon.zzz.fill" : "moon.zzz") {
-                isShowingSleep = true
-            }
-            .accessibilityValue(player.sleepTimer.isActive ? "On" : "Off")
-            Spacer()
             Button("Chapters", systemImage: "list.bullet") { isShowingChapters = true }
             Spacer()
             // ponytail: bookmarks arrive with their own task
@@ -129,26 +124,65 @@ struct FullPlayerScreen: View {
 /// Previous chapter, skip back, play/pause, skip forward and next chapter, morphing as one glass group.
 struct TransportCluster: View {
     @Environment(PlayerController.self) private var player
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Binding var isShowingSleep: Bool
+    @Namespace private var glass
 
     var body: some View {
         GlassEffectContainer(spacing: 16) {
-            HStack(spacing: 16) {
-                Button("Previous Chapter", systemImage: "backward.end.fill") {
-                    Task { await player.previousChapter() }
+            VStack(spacing: 16) {
+                HStack(spacing: 16) {
+                    Button("Previous Chapter", systemImage: "backward.end.fill") {
+                        Task { await player.previousChapter() }
+                    }
+                    .frame(width: 44, height: 44)
+                    skip(by: -player.skipBackInterval, symbol: "gobackward", label: "Skip back")
+                    GlassPlayButton()
+                    skip(by: player.skipForwardInterval, symbol: "goforward", label: "Skip forward")
+                    Button("Next Chapter", systemImage: "forward.end.fill") {
+                        Task { await player.nextChapter() }
+                    }
+                    .frame(width: 44, height: 44)
+                    .disabled(player.chapter.map { $0.index == player.book?.chapters.last?.index } ?? true)
                 }
-                .frame(width: 44, height: 44)
-                skip(by: -player.skipBackInterval, symbol: "gobackward", label: "Skip back")
-                GlassPlayButton()
-                skip(by: player.skipForwardInterval, symbol: "goforward", label: "Skip forward")
-                Button("Next Chapter", systemImage: "forward.end.fill") {
-                    Task { await player.nextChapter() }
-                }
-                .frame(width: 44, height: 44)
-                .disabled(player.chapter.map { $0.index == player.book?.chapters.last?.index } ?? true)
+                sleepControl
             }
             .labelStyle(.iconOnly)
             .foregroundStyle(Theme.textPrimary)
         }
+        // No morph with Reduce Motion: the glass swaps instantly.
+        .animation(reduceMotion ? nil : .smooth, value: player.sleepTimer.isActive)
+    }
+
+    /// A moon button that morphs into a countdown pill while the timer runs.
+    @ViewBuilder private var sleepControl: some View {
+        let timer = player.sleepTimer
+        Button { isShowingSleep = true } label: {
+            if let remaining = timer.remaining, timer.isActive {
+                Label {
+                    Text(Duration.seconds(remaining.rounded(.up)).formatted(.time(pattern: .hourMinuteSecond)))
+                        .monospacedDigit()
+                } icon: {
+                    Image(systemName: "moon.zzz.fill")
+                }
+                .labelStyle(.titleAndIcon)
+                .padding(.horizontal, 16)
+                .frame(height: 44)
+                .glassEffect(.regular.interactive(), in: .capsule)
+                .glassEffectID("sleep", in: glass)
+            } else {
+                Image(systemName: "moon.zzz")
+                    .frame(width: 44, height: 44)
+                    .glassEffect(.regular.interactive(), in: .circle)
+                    .glassEffectID("sleep", in: glass)
+            }
+        }
+        .accessibilityLabel("Sleep Timer")
+        .accessibilityValue(timer.remaining.flatMap { timer.isActive ? Self.spoken($0) : nil } ?? "Off")
+    }
+
+    private static func spoken(_ seconds: TimeInterval) -> String {
+        Duration.seconds(seconds.rounded(.up)).formatted(.units(allowed: [.hours, .minutes, .seconds]))
     }
 
     private func skip(by seconds: TimeInterval, symbol: String, label: String) -> some View {
@@ -207,4 +241,10 @@ extension PlayerController {
 
 #Preview {
     FullPlayerScreen().environment(PlayerController.preview())
+}
+
+#Preview("Sleep timer active") {
+    let player = PlayerController.preview()
+    player.startSleepTimer(.duration(25 * 60))
+    return FullPlayerScreen().environment(player)
 }
