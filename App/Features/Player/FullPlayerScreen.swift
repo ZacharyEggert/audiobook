@@ -10,6 +10,7 @@ struct FullPlayerScreen: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var isShowingChapters = false
     @State private var isShowingSpeed = false
+    @State private var isShowingSleep = false
     /// Chapter seconds while the scrubber is dragged; seeking waits for release.
     @State private var scrub: TimeInterval?
 
@@ -21,6 +22,7 @@ struct FullPlayerScreen: View {
                     .toolbar { toolbar }
                     .sheet(isPresented: $isShowingChapters) { ChaptersSheet() }
                     .sheet(isPresented: $isShowingSpeed) { SpeedSheet() }
+                    .sheet(isPresented: $isShowingSleep) { SleepTimerSheet() }
             }
         }
         .gesture(DragGesture().onEnded {
@@ -107,11 +109,14 @@ struct FullPlayerScreen: View {
             .accessibilityLabel("Speed")
             .accessibilityValue("\(player.rate.formatted()) times")
             Spacer()
-            // ponytail: sleep timer and bookmarks arrive with their own tasks
-            Button("Sleep Timer", systemImage: "moon.zzz") {}.disabled(true)
+            Button("Sleep Timer", systemImage: player.sleepTimer.isActive ? "moon.zzz.fill" : "moon.zzz") {
+                isShowingSleep = true
+            }
+            .accessibilityValue(player.sleepTimer.isActive ? "On" : "Off")
             Spacer()
             Button("Chapters", systemImage: "list.bullet") { isShowingChapters = true }
             Spacer()
+            // ponytail: bookmarks arrive with their own task
             Button("Bookmark", systemImage: "bookmark") {}.disabled(true)
             Spacer()
             RoutePicker()

@@ -7,6 +7,10 @@ enum PlayerSettings {
     static let skipForwardKey = "skipForwardInterval"
     static let smartRewindKey = "smartRewind"
     static let defaultSpeedKey = "defaultSpeed"
+    static let nightTimerKey = "nightTimer"
+    static let nightStartKey = "nightTimerStartHour"
+    static let nightEndKey = "nightTimerEndHour"
+    static let nightMinutesKey = "nightTimerMinutes"
     private static let bookSpeedPrefix = "bookSpeed."
     static let intervals: [Int] = [5, 10, 15, 30, 45, 60, 90]
 
@@ -16,6 +20,11 @@ enum PlayerSettings {
         let speed = defaults.double(forKey: defaultSpeedKey)
         player.defaultRate = speed > 0 ? PlaybackSpeed.clamp(Float(speed)) : 1
         player.smartRewindEnabled = defaults.object(forKey: smartRewindKey) as? Bool ?? true
+        player.nightTimer = defaults.bool(forKey: nightTimerKey) ? NightTimer(
+            startHour: defaults.object(forKey: nightStartKey) as? Int ?? 22,
+            endHour: defaults.object(forKey: nightEndKey) as? Int ?? 6,
+            minutes: defaults.object(forKey: nightMinutesKey) as? Int ?? 30,
+        ) : nil
     }
 
     // ponytail: per-book speed in UserDefaults doesn't sync; move onto ProgressRecord (schema V2) when M6 syncs the library

@@ -14,6 +14,11 @@ import AVFoundation
         }
     }
 
+    public var volume: Float {
+        get { player.volume }
+        set { player.volume = newValue }
+    }
+
     let player = AVQueuePlayer()
     private var book: Book?
     private var folder: URL?

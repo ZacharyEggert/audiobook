@@ -11,6 +11,7 @@ struct EarReaderApp: App {
     @State private var player: PlayerController
     @State private var nowPlaying: NowPlaying
     @State private var audioSession: AudioSession
+    @State private var shake = ShakeDetector()
 
     init() {
         do {
@@ -41,6 +42,14 @@ struct EarReaderApp: App {
                 .environment(player)
                 .onOpenURL { imports.open($0) }
                 .task { await restoreLastBook() }
+                .onChange(of: player.sleepTimer.isActive, initial: true) {
+                    shake.onShake = { player.extendSleepTimer() }
+                    if player.sleepTimer.isActive {
+                        shake.start()
+                    } else {
+                        shake.stop()
+                    }
+                }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.willTerminateNotification)) { _ in
                     player.saveNow()
                 }

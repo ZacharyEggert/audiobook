@@ -42,6 +42,11 @@ import Observation
     /// Rewinds a little on resume, more the longer the pause (`SmartRewind`).
     public var smartRewindEnabled = true
 
+    public let sleepTimer: SleepTimer
+
+    /// Starts a sleep timer when playback starts at night and none is running.
+    public var nightTimer: NightTimer?
+
     public var isPlaying: Bool {
         state == .playing
     }
@@ -88,8 +93,11 @@ import Observation
     public init(makeEngine: @escaping () -> any PlaybackEngine, now: @escaping () -> Date = Date.init) {
         self.makeEngine = makeEngine
         self.now = now
+        sleepTimer = SleepTimer(now: now)
         engine = makeEngine()
         engine.onEvent = { [weak self] in self?.handle($0) }
+        sleepTimer.onStop = { [weak self] in self?.pause() }
+        sleepTimer.onVolume = { [weak self] in self?.engine.volume = $0 }
     }
 
     /// A media services reset reloads into the same `engine`.
@@ -124,6 +132,10 @@ import Observation
         guard book != nil else { return }
         wantsToPlay = true
         onWillPlay?()
+        if let nightTimer, !sleepTimer.isActive, nightTimer.contains(now()) {
+            startSleepTimer(.duration(TimeInterval(nightTimer.minutes) * 60))
+        }
+        sleepTimer.playbackStarted()
         let rewind = smartRewindEnabled && state != .playing ? pausedAt
             .map { SmartRewind.seconds(afterPause: now().timeIntervalSince($0)) } ?? 0 : 0
         pausedAt = nil
@@ -144,7 +156,24 @@ import Observation
             pausedAt = now()
         }
         wantsToPlay = false
+        sleepTimer.playbackPaused()
         engine.pause()
+    }
+
+    /// Starts the sleep timer; `.endOfChapter` ends at the current chapter's end.
+    public func startSleepTimer(_ mode: SleepTimer.Mode) {
+        sleepTimer.start(mode, position: position, rate: rate)
+    }
+
+    /// Starts a timer that stops at the end of the current chapter, if there is one.
+    public func startSleepTimerAtChapterEnd() {
+        guard let chapter else { return }
+        startSleepTimer(.endOfChapter(end: chapter.end))
+    }
+
+    /// A shake: add time to a running sleep timer.
+    public func extendSleepTimer() {
+        sleepTimer.extend(position: position, rate: rate)
     }
 
     public func toggle() {
@@ -237,6 +266,9 @@ import Observation
         switch event {
         case let .time(time):
             update(position: time)
+            if state == .playing {
+                sleepTimer.tick(position: position, rate: rate)
+            }
             // ponytail: 5 s of book time, so more often in wall time at speed; harmless
             if state == .playing, abs(position - lastSavedPosition) >= 5 {
                 saveNow()
