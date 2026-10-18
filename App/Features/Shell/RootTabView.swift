@@ -13,7 +13,7 @@ struct RootTabView: View {
     var body: some View {
         TabView {
             Tab("Home", systemImage: "house") {
-                PlaceholderScreen(title: "Home", systemImage: "house")
+                HomeScreen()
             }
             Tab("Library", systemImage: "books.vertical") {
                 LibraryScreen()
