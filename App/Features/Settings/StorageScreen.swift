@@ -10,6 +10,7 @@ struct SettingsScreen: View {
     @AppStorage(PlayerSettings.defaultSpeedKey) private var defaultSpeed: Double = 1
     @AppStorage(PlayerSettings.smartRewindKey) private var smartRewind = true
     @AppStorage(PlayerSettings.bookmarkOnPreviousKey) private var bookmarkOnPrevious = false
+    @AppStorage(PlayerSettings.autoPlayNextKey) private var autoPlayNext = false
     @AppStorage(PlayerSettings.nightTimerKey) private var nightTimer = false
     @AppStorage(PlayerSettings.nightStartKey) private var nightStart = 22
     @AppStorage(PlayerSettings.nightEndKey) private var nightEnd = 6
@@ -32,6 +33,7 @@ struct SettingsScreen: View {
                     )
                     Toggle("Smart Rewind", isOn: $smartRewind)
                     Toggle("Bookmark on Previous Track", isOn: $bookmarkOnPrevious)
+                    Toggle("Auto-Play Next in Series", isOn: $autoPlayNext)
                 } header: {
                     Text("Playback")
                 } footer: {

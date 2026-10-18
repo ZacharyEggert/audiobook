@@ -8,6 +8,7 @@ enum PlayerSettings {
     static let smartRewindKey = "smartRewind"
     static let defaultSpeedKey = "defaultSpeed"
     static let bookmarkOnPreviousKey = "bookmarkOnPreviousTrack"
+    static let autoPlayNextKey = "autoPlayNextInSeries"
     static let nightTimerKey = "nightTimer"
     static let nightStartKey = "nightTimerStartHour"
     static let nightEndKey = "nightTimerEndHour"

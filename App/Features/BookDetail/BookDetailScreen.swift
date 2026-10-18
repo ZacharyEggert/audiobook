@@ -7,6 +7,7 @@ import SwiftUI
 struct BookDetailScreen: View {
     let book: BookRecord
     @Environment(PlayerController.self) private var player
+    @Environment(\.modelContext) private var context
     @Query private var progressRecords: [ProgressRecord]
     @State private var isSummaryExpanded = false
 
@@ -45,6 +46,20 @@ struct BookDetailScreen: View {
         .background(Theme.background)
         .ignoresSafeArea(edges: .top)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Menu("Progress", systemImage: "ellipsis.circle") {
+                    if progress.status == .finished {
+                        Button("Mark as Unfinished", systemImage: "arrow.uturn.backward") { setFinished(false) }
+                    } else {
+                        Button("Mark as Finished", systemImage: "checkmark.circle") { setFinished(true) }
+                    }
+                    if progress.status != .notStarted {
+                        Button("Reset Progress", systemImage: "arrow.counterclockwise", role: .destructive, action: reset)
+                    }
+                }
+            }
+        }
         .overlay(alignment: .bottom) {
             Button(action: play) {
                 Label(playLabel, systemImage: isCurrent && player.isPlaying ? "pause.fill" : "play.fill")
@@ -73,9 +88,30 @@ struct BookDetailScreen: View {
     private func play() {
         guard !isCurrent else { return player.toggle() }
         let position = progress.status == .finished ? 0 : progress.position
+        if progress.status == .finished {
+            PlaybackProgress.reset(bookID: book.id, in: context) // listening again
+        }
         Task {
             await player.load(book.book, folder: LibraryFiles().folder(for: book.id), at: position)
             player.play()
+        }
+    }
+
+    /// Pauses first when this is the loaded book, so a pending position save can't undo the change.
+    private func setFinished(_ finished: Bool) {
+        if isCurrent {
+            player.pause()
+        }
+        PlaybackProgress.setFinished(finished, bookID: book.id, duration: book.duration, in: context)
+    }
+
+    private func reset() {
+        Task {
+            if isCurrent {
+                player.pause()
+                await player.seek(to: 0)
+            }
+            PlaybackProgress.reset(bookID: book.id, in: context)
         }
     }
 
