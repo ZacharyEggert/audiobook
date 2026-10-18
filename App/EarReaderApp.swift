@@ -42,6 +42,7 @@ struct EarReaderApp: App {
                 player.play()
             }
         }
+        player.onListeningSample = { ListeningLog.record($0, in: context) }
         player.onAddBookmark = { Bookmarks.add(bookID: $0, position: $1, in: context) }
         _player = State(initialValue: player)
         _nowPlaying = State(initialValue: NowPlaying(player: player) { book in

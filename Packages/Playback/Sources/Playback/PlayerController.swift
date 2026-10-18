@@ -21,6 +21,7 @@ import Observation
                 return
             }
             engine.rate = rate
+            listening.setRate(rate, at: now())
             onTimingChange?()
             if !isRestoringRate, let book {
                 onRateChange?(book.id, rate)
@@ -73,6 +74,8 @@ import Observation
     /// intervals. Not called on every tick.
     @ObservationIgnored public var onTimingChange: (() -> Void)?
 
+    /// The listening session so far: every `saveNow()` while playing, and when playback stops. Same `id` throughout a session.
+    @ObservationIgnored public var onListeningSample: ((ListeningSample) -> Void)?
     /// The user asked for a bookmark at `(bookID, position)`.
     @ObservationIgnored public var onAddBookmark: ((UUID, TimeInterval) -> Void)?
     /// The user changed the speed for this book.
@@ -89,6 +92,7 @@ import Observation
     /// When playback last paused, for smart rewind. Nil after a load, so a relaunch doesn't rewind.
     @ObservationIgnored private var pausedAt: Date?
     @ObservationIgnored private var isRestoringRate = false
+    @ObservationIgnored private var listening = ListeningTracker()
     @ObservationIgnored private let now: () -> Date
     /// The rewind-then-play started by `play()`, so tests can wait for it.
     @ObservationIgnored private(set) var resumeTask: Task<Void, Never>?
@@ -238,6 +242,7 @@ import Observation
         guard let book else { return }
         lastSavedPosition = position
         onPositionSave?(book.id, position)
+        reportListening(listening.snapshot(at: now()))
     }
 
     /// Reacts to the audio session (PLAN §4): pause on interruption and resume after it if we were playing, pause when
@@ -265,6 +270,7 @@ import Observation
         engine = makeEngine()
         engine.onEvent = { [weak self] in self?.handle($0) }
         wantsToPlay = false
+        reportListening(listening.end(at: now()))
         state = .idle
         if let book, let folder {
             await load(book, folder: folder, at: position)
@@ -285,6 +291,7 @@ import Observation
         case let .state(new):
             let old = state
             state = new
+            trackListening(from: old, to: new)
             if new == .ended {
                 wantsToPlay = false
                 saveNow()
@@ -309,6 +316,23 @@ import Observation
         if current != chapter {
             chapter = current
             onTimingChange?()
+        }
+    }
+}
+
+private extension PlayerController {
+    /// A session runs from the engine starting to play until it stops for any reason.
+    func trackListening(from old: PlaybackState, to new: PlaybackState) {
+        if new == .playing, old != .playing, let book {
+            listening.begin(bookID: book.id, rate: rate, at: now())
+        } else if old == .playing, new != .playing {
+            reportListening(listening.end(at: now()))
+        }
+    }
+
+    func reportListening(_ sample: ListeningSample?) {
+        if let sample {
+            onListeningSample?(sample)
         }
     }
 }

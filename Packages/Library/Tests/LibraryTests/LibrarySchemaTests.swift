@@ -91,7 +91,7 @@ private func sampleBook(in context: ModelContext) -> BookRecord {
 
 /// The rules CloudKit mirroring enforces at container creation, checked here because tests can't enable CloudKit.
 @Test func `schema is CloudKit compatible`() {
-    for entity in Schema(versionedSchema: LibrarySchemaV1.self).entities {
+    for entity in Schema(versionedSchema: LibrarySchemaV2.self).entities {
         #expect(entity.uniquenessConstraints.isEmpty, "\(entity.name) has a unique constraint")
         for relationship in entity.relationships {
             #expect(relationship.isOptional, "\(entity.name).\(relationship.name) isn't optional")
@@ -101,4 +101,30 @@ private func sampleBook(in context: ModelContext) -> BookRecord {
             #expect(!attribute.isUnique, "\(entity.name).\(attribute.name) is unique")
         }
     }
+}
+
+@Test func `a version 1 store migrates to version 2 keeping its books`() throws {
+    let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    do {
+        let schema = Schema(versionedSchema: LibrarySchemaV1.self)
+        let legacy = try ModelContainer(
+            for: schema,
+            configurations: ModelConfiguration(
+                "Library",
+                schema: schema,
+                url: directory.appending(path: "Library.store"),
+                cloudKitDatabase: .none,
+            ),
+        )
+        let context = ModelContext(legacy)
+        _ = sampleBook(in: context)
+        try context.save()
+    }
+    let context = try ModelContext(LibraryStore.makeContainer(directory: directory))
+    #expect(try context.fetchCount(FetchDescriptor<BookRecord>()) == 1)
+    context.insert(ListeningSessionRecord(bookID: UUID(), start: .now, realSeconds: 5, contentSeconds: 5))
+    try context.save()
+    #expect(try context.fetchCount(FetchDescriptor<ListeningSessionRecord>()) == 1)
 }

@@ -2,7 +2,7 @@ import AudiobookCore
 import Foundation
 import SwiftData
 
-/// Version 1 of the library store. To change a model, copy it into a `LibrarySchemaV2`, point the typealiases there,
+/// Version 1 of the library store. To change a model, copy it into a new schema version, point the typealiases there,
 /// and add a stage to `LibraryMigrationPlan`.
 ///
 /// The whole library mirrors to iCloud from M6 (the audio itself syncs through iCloud Drive), so every model follows
@@ -173,6 +173,36 @@ public enum LibrarySchemaV1: VersionedSchema {
     }
 }
 
+/// Version 2 adds `ListeningSessionRecord`. The other models are shared with V1, so the stage is a lightweight migration.
+public enum LibrarySchemaV2: VersionedSchema {
+    public static var versionIdentifier: Schema.Version {
+        Schema.Version(2, 0, 0)
+    }
+
+    public static var models: [any PersistentModel.Type] {
+        LibrarySchemaV1.models + [ListeningSessionRecord.self]
+    }
+
+    /// One stretch of listening, from play to pause. Feeds the Stats tab.
+    @Model public final class ListeningSessionRecord {
+        public var id = UUID()
+        public var bookID = UUID()
+        public var start = Date.distantPast
+        /// Wall-clock seconds.
+        public var realSeconds: TimeInterval = 0
+        /// Seconds of book played; more than `realSeconds` at speeds above 1×.
+        public var contentSeconds: TimeInterval = 0
+
+        public init(id: UUID = UUID(), bookID: UUID, start: Date, realSeconds: TimeInterval, contentSeconds: TimeInterval) {
+            self.id = id
+            self.bookID = bookID
+            self.start = start
+            self.realSeconds = realSeconds
+            self.contentSeconds = contentSeconds
+        }
+    }
+}
+
 public typealias BookRecord = LibrarySchemaV1.BookRecord
 public typealias FileRecord = LibrarySchemaV1.FileRecord
 public typealias ChapterRecord = LibrarySchemaV1.ChapterRecord
@@ -180,14 +210,15 @@ public typealias MetadataOverride = LibrarySchemaV1.MetadataOverride
 public typealias ProgressRecord = LibrarySchemaV1.ProgressRecord
 public typealias BookmarkRecord = LibrarySchemaV1.BookmarkRecord
 public typealias CollectionRecord = LibrarySchemaV1.CollectionRecord
+public typealias ListeningSessionRecord = LibrarySchemaV2.ListeningSessionRecord
 
 public enum LibraryMigrationPlan: SchemaMigrationPlan {
     public static var schemas: [any VersionedSchema.Type] {
-        [LibrarySchemaV1.self]
+        [LibrarySchemaV1.self, LibrarySchemaV2.self]
     }
 
     public static var stages: [MigrationStage] {
-        []
+        [.lightweight(fromVersion: LibrarySchemaV1.self, toVersion: LibrarySchemaV2.self)]
     }
 }
 
@@ -195,7 +226,7 @@ public enum LibraryStore {
     /// - Parameter directory: Where `Library.store` goes; nil keeps it in memory (tests, previews).
     /// ponytail: `cloudKitDatabase: .none` until M6 adds the iCloud entitlements and switches it to `.private`.
     public static func makeContainer(directory: URL? = .applicationSupportDirectory) throws -> ModelContainer {
-        let schema = Schema(versionedSchema: LibrarySchemaV1.self)
+        let schema = Schema(versionedSchema: LibrarySchemaV2.self)
         let configuration = if let directory {
             ModelConfiguration("Library", schema: schema, url: directory.appending(path: "Library.store"), cloudKitDatabase: .none)
         } else {
