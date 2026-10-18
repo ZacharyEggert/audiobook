@@ -41,6 +41,8 @@ import Observation
 
     /// Rewinds a little on resume, more the longer the pause (`SmartRewind`).
     public var smartRewindEnabled = true
+    /// The remote previous-track command (headphones, lock screen) adds a bookmark instead of changing chapter.
+    public var previousTrackAddsBookmark = false
 
     public let sleepTimer: SleepTimer
 
@@ -71,6 +73,8 @@ import Observation
     /// intervals. Not called on every tick.
     @ObservationIgnored public var onTimingChange: (() -> Void)?
 
+    /// The user asked for a bookmark at `(bookID, position)`.
+    @ObservationIgnored public var onAddBookmark: ((UUID, TimeInterval) -> Void)?
     /// The user changed the speed for this book.
     @ObservationIgnored public var onRateChange: ((UUID, Float) -> Void)?
     /// The speed remembered for a book, if any; `load` uses it instead of `defaultRate`.
@@ -201,6 +205,11 @@ import Observation
 
     public func skipForward() async {
         await skip(by: skipForwardInterval)
+    }
+
+    public func addBookmark() {
+        guard let book else { return }
+        onAddBookmark?(book.id, position)
     }
 
     public func jump(to chapter: Chapter) async {

@@ -27,6 +27,7 @@ struct EarReaderApp: App {
         let context = container.mainContext
         player.onPositionSave = { PlaybackProgress.save(bookID: $0, position: $1, in: context) }
         player.onBookFinished = { id in PlaybackProgress.save(bookID: id, position: player.duration, finished: true, in: context) }
+        player.onAddBookmark = { Bookmarks.add(bookID: $0, position: $1, in: context) }
         _player = State(initialValue: player)
         _nowPlaying = State(initialValue: NowPlaying(player: player) { book in
             await CoverCache.image(bookID: book.id, coverRef: book.coverRef, size: .player)?.cgImage

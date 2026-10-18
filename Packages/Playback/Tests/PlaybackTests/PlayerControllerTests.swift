@@ -41,6 +41,23 @@ import Testing
         #expect(player.chapterElapsed == 5)
     }
 
+    @Test func `add bookmark reports the book and exact position`() async {
+        let player = await loaded(at: 75.25)
+        var added: [(UUID, TimeInterval)] = []
+        player.onAddBookmark = { added.append(($0, $1)) }
+        player.addBookmark()
+        #expect(added.count == 1)
+        #expect(added.first?.0 == book.id)
+        #expect(added.first?.1 == 75.25)
+    }
+
+    @Test func `seeking to a bookmark lands at its exact time across files`() async {
+        let player = await loaded()
+        await player.seek(to: 90.5)
+        #expect(player.position == 90.5)
+        #expect(player.chapter?.title == "Two")
+    }
+
     @Test func `load pauses at position at the default rate`() async {
         player.defaultRate = 1.5
         let player = await loaded(at: 30)

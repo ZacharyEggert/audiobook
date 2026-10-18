@@ -11,6 +11,7 @@ struct FullPlayerScreen: View {
     @State private var isShowingChapters = false
     @State private var isShowingSpeed = false
     @State private var isShowingSleep = false
+    @State private var isShowingBookmarks = false
     /// Chapter seconds while the scrubber is dragged; seeking waits for release.
     @State private var scrub: TimeInterval?
 
@@ -23,6 +24,7 @@ struct FullPlayerScreen: View {
                     .sheet(isPresented: $isShowingChapters) { ChaptersSheet() }
                     .sheet(isPresented: $isShowingSpeed) { SpeedSheet() }
                     .sheet(isPresented: $isShowingSleep) { SleepTimerSheet() }
+                    .sheet(isPresented: $isShowingBookmarks) { BookmarksSheet(bookID: book.id) }
             }
         }
         .gesture(DragGesture().onEnded {
@@ -111,8 +113,10 @@ struct FullPlayerScreen: View {
             Spacer()
             Button("Chapters", systemImage: "list.bullet") { isShowingChapters = true }
             Spacer()
-            // ponytail: bookmarks arrive with their own task
-            Button("Bookmark", systemImage: "bookmark") {}.disabled(true)
+            Menu("Bookmark", systemImage: "bookmark") {
+                Button("Add Bookmark", systemImage: "bookmark.fill") { player.addBookmark() }
+                Button("Show Bookmarks", systemImage: "list.bullet") { isShowingBookmarks = true }
+            }
             Spacer()
             RoutePicker()
                 .frame(width: 32, height: 32)

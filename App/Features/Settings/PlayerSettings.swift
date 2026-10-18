@@ -7,6 +7,7 @@ enum PlayerSettings {
     static let skipForwardKey = "skipForwardInterval"
     static let smartRewindKey = "smartRewind"
     static let defaultSpeedKey = "defaultSpeed"
+    static let bookmarkOnPreviousKey = "bookmarkOnPreviousTrack"
     static let nightTimerKey = "nightTimer"
     static let nightStartKey = "nightTimerStartHour"
     static let nightEndKey = "nightTimerEndHour"
@@ -20,6 +21,7 @@ enum PlayerSettings {
         let speed = defaults.double(forKey: defaultSpeedKey)
         player.defaultRate = speed > 0 ? PlaybackSpeed.clamp(Float(speed)) : 1
         player.smartRewindEnabled = defaults.object(forKey: smartRewindKey) as? Bool ?? true
+        player.previousTrackAddsBookmark = defaults.bool(forKey: bookmarkOnPreviousKey)
         player.nightTimer = defaults.bool(forKey: nightTimerKey) ? NightTimer(
             startHour: defaults.object(forKey: nightStartKey) as? Int ?? 22,
             endHour: defaults.object(forKey: nightEndKey) as? Int ?? 6,

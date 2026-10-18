@@ -9,6 +9,7 @@ struct SettingsScreen: View {
     @AppStorage(PlayerSettings.skipForwardKey) private var skipForward = 30
     @AppStorage(PlayerSettings.defaultSpeedKey) private var defaultSpeed: Double = 1
     @AppStorage(PlayerSettings.smartRewindKey) private var smartRewind = true
+    @AppStorage(PlayerSettings.bookmarkOnPreviousKey) private var bookmarkOnPrevious = false
     @AppStorage(PlayerSettings.nightTimerKey) private var nightTimer = false
     @AppStorage(PlayerSettings.nightStartKey) private var nightStart = 22
     @AppStorage(PlayerSettings.nightEndKey) private var nightEnd = 6
@@ -30,12 +31,15 @@ struct SettingsScreen: View {
                         step: Double(PlaybackSpeed.step),
                     )
                     Toggle("Smart Rewind", isOn: $smartRewind)
+                    Toggle("Bookmark on Previous Track", isOn: $bookmarkOnPrevious)
                 } header: {
                     Text("Playback")
                 } footer: {
                     Text(
                         "Smart Rewind backs up a few seconds when you resume, more the longer you were away. "
-                            + "Default Speed applies to books without their own speed.",
+                            + "Default Speed applies to books without their own speed. "
+                            +
+                            "Bookmark on Previous Track makes the previous-track button on headphones and the lock screen add a bookmark.",
                     )
                 }
                 Section {
@@ -58,7 +62,7 @@ struct SettingsScreen: View {
             }
             .navigationTitle("Settings")
             .onChange(of: [
-                skipBack, skipForward, smartRewind ? 1 : 0, Int((defaultSpeed * 20).rounded()),
+                skipBack, skipForward, smartRewind ? 1 : 0, bookmarkOnPrevious ? 1 : 0, Int((defaultSpeed * 20).rounded()),
                 nightTimer ? 1 : 0, nightStart, nightEnd, nightMinutes,
             ]) {
                 PlayerSettings.apply(to: player)
