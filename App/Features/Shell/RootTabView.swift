@@ -6,7 +6,6 @@ struct RootTabView: View {
     @Environment(ImportCoordinator.self) private var imports
     @Environment(PlayerController.self) private var player
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var searchText = ""
     @State private var isPlayerPresented = false
     @Namespace private var playerTransition
 
@@ -25,11 +24,7 @@ struct RootTabView: View {
                 SettingsScreen()
             }
             Tab(role: .search) {
-                NavigationStack {
-                    ContentUnavailableView.search(text: searchText)
-                        .navigationTitle("Search")
-                }
-                .searchable(text: $searchText)
+                SearchScreen { isPlayerPresented = true }
             }
         }
         .tabBarMinimizeBehavior(.onScrollDown)
