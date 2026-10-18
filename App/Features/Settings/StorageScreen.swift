@@ -7,6 +7,7 @@ struct SettingsScreen: View {
     @Environment(PlayerController.self) private var player
     @AppStorage(PlayerSettings.skipBackKey) private var skipBack = 15
     @AppStorage(PlayerSettings.skipForwardKey) private var skipForward = 30
+    @AppStorage(PlayerSettings.defaultSpeedKey) private var defaultSpeed: Double = 1
     @AppStorage(PlayerSettings.smartRewindKey) private var smartRewind = true
 
     var body: some View {
@@ -19,11 +20,19 @@ struct SettingsScreen: View {
                     Picker("Skip Forward", selection: $skipForward) {
                         ForEach(PlayerSettings.intervals, id: \.self) { Text("\($0) seconds").tag($0) }
                     }
+                    Stepper(
+                        "Default Speed \(PlaybackSpeed.clamp(Float(defaultSpeed)).formatted())×",
+                        value: $defaultSpeed, in: Double(PlaybackSpeed.range.lowerBound) ... Double(PlaybackSpeed.range.upperBound),
+                        step: Double(PlaybackSpeed.step),
+                    )
                     Toggle("Smart Rewind", isOn: $smartRewind)
                 } header: {
                     Text("Playback")
                 } footer: {
-                    Text("Backs up a few seconds when you resume, more the longer you were away.")
+                    Text(
+                        "Smart Rewind backs up a few seconds when you resume, more the longer you were away. "
+                            + "Default Speed applies to books without their own speed.",
+                    )
                 }
                 NavigationLink {
                     StorageScreen()
@@ -32,7 +41,9 @@ struct SettingsScreen: View {
                 }
             }
             .navigationTitle("Settings")
-            .onChange(of: [skipBack, skipForward, smartRewind ? 1 : 0]) { PlayerSettings.apply(to: player) }
+            .onChange(of: [skipBack, skipForward, smartRewind ? 1 : 0, Int((defaultSpeed * 20).rounded())]) {
+                PlayerSettings.apply(to: player)
+            }
         }
     }
 }

@@ -76,7 +76,7 @@ import MediaPlayer
             let target = Self.globalTime(remote: event.positionTime, player: player, usesChapterTime: usesChapterTime)
             Task { await player.seek(to: target) }
         }
-        commands.changePlaybackRateCommand.supportedPlaybackRates = [0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3]
+        commands.changePlaybackRateCommand.supportedPlaybackRates = PlaybackSpeed.remoteRates.map { NSNumber(value: $0) }
         on(commands.changePlaybackRateCommand) { event in
             guard let event = event as? MPChangePlaybackRateCommandEvent else { return }
             player.rate = event.playbackRate

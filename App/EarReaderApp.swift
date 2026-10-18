@@ -21,6 +21,8 @@ struct EarReaderApp: App {
         _imports = State(initialValue: ImportCoordinator(container: container))
         let player = PlayerController(makeEngine: { AVPlayerEngine() })
         PlayerSettings.apply(to: player)
+        player.savedRate = { PlayerSettings.speed(for: $0) }
+        player.onRateChange = { PlayerSettings.setSpeed($1, for: $0) }
         let context = container.mainContext
         player.onPositionSave = { PlaybackProgress.save(bookID: $0, position: $1, in: context) }
         player.onBookFinished = { id in PlaybackProgress.save(bookID: id, position: player.duration, finished: true, in: context) }

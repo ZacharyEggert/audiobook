@@ -41,8 +41,8 @@ import Testing
         #expect(player.chapterElapsed == 5)
     }
 
-    @Test func `load pauses at position and keeps the rate`() async {
-        player.rate = 1.5
+    @Test func `load pauses at position at the default rate`() async {
+        player.defaultRate = 1.5
         let player = await loaded(at: 30)
         #expect(player.book == book)
         #expect(player.folder == folder)
@@ -210,7 +210,7 @@ import Testing
             engines.append(engine)
             return engine
         }
-        player.rate = 1.5
+        player.defaultRate = 1.5
         await player.load(book, folder: folder, at: 0)
         player.play()
         engines[0].advance(by: 20)

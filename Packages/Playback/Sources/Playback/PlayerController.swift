@@ -15,10 +15,21 @@ import Observation
     public var lastError: String?
     public var rate: Float = 1 {
         didSet {
+            let snapped = PlaybackSpeed.clamp(rate)
+            guard snapped == rate else {
+                rate = snapped
+                return
+            }
             engine.rate = rate
             onTimingChange?()
+            if !isRestoringRate, let book {
+                onRateChange?(book.id, rate)
+            }
         }
     }
+
+    /// The speed for books without one of their own.
+    public var defaultRate: Float = 1
 
     public var skipBackInterval: TimeInterval = 15 {
         didSet { onTimingChange?() }
@@ -55,6 +66,11 @@ import Observation
     /// intervals. Not called on every tick.
     @ObservationIgnored public var onTimingChange: (() -> Void)?
 
+    /// The user changed the speed for this book.
+    @ObservationIgnored public var onRateChange: ((UUID, Float) -> Void)?
+    /// The speed remembered for a book, if any; `load` uses it instead of `defaultRate`.
+    @ObservationIgnored public var savedRate: ((UUID) -> Float?)?
+
     @ObservationIgnored public private(set) var engine: any PlaybackEngine
     @ObservationIgnored private let makeEngine: () -> any PlaybackEngine
     @ObservationIgnored private var lastSavedPosition: TimeInterval = 0
@@ -63,6 +79,7 @@ import Observation
     @ObservationIgnored private var resumeAfterInterruption = false
     /// When playback last paused, for smart rewind. Nil after a load, so a relaunch doesn't rewind.
     @ObservationIgnored private var pausedAt: Date?
+    @ObservationIgnored private var isRestoringRate = false
     @ObservationIgnored private let now: () -> Date
     /// The rewind-then-play started by `play()`, so tests can wait for it.
     @ObservationIgnored private(set) var resumeTask: Task<Void, Never>?
@@ -87,7 +104,12 @@ import Observation
         do {
             try await engine.load(book, folder: folder, at: position)
             pausedAt = nil
-            engine.rate = rate
+            if book.id != self.book?.id {
+                isRestoringRate = true
+                rate = savedRate?(book.id) ?? defaultRate
+                isRestoringRate = false
+            }
+            engine.rate = rate // didSet skips an unchanged rate, e.g. on a rebuilt engine
             self.book = book
             self.folder = folder
             update(position: engine.currentTime)

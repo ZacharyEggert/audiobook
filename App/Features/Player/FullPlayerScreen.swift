@@ -9,10 +9,9 @@ struct FullPlayerScreen: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var isShowingChapters = false
+    @State private var isShowingSpeed = false
     /// Chapter seconds while the scrubber is dragged; seeking waits for release.
     @State private var scrub: TimeInterval?
-
-    private static let rates: [Float] = [0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3]
 
     var body: some View {
         NavigationStack {
@@ -21,6 +20,7 @@ struct FullPlayerScreen: View {
                     .background { backdrop(book) }
                     .toolbar { toolbar }
                     .sheet(isPresented: $isShowingChapters) { ChaptersSheet() }
+                    .sheet(isPresented: $isShowingSpeed) { SpeedSheet() }
             }
         }
         .gesture(DragGesture().onEnded {
@@ -101,12 +101,7 @@ struct FullPlayerScreen: View {
             Button("Close", systemImage: "chevron.down") { dismiss() }
         }
         ToolbarItemGroup(placement: .bottomBar) {
-            @Bindable var player = player
-            Menu {
-                Picker("Speed", selection: $player.rate) {
-                    ForEach(Self.rates, id: \.self) { Text("\($0.formatted())×").tag($0) }
-                }
-            } label: {
+            Button { isShowingSpeed = true } label: {
                 Text("\(player.rate.formatted())×").monospacedDigit()
             }
             .accessibilityLabel("Speed")
