@@ -7,6 +7,7 @@ import Foundation
     public private(set) var state: PlaybackState = .idle
     public private(set) var currentTime: TimeInterval = 0
     public var rate: Float = 1
+    public var volume: Float = 1
     /// Set to make the next `load` throw.
     public var loadError: (any Error)?
     public var onEvent: ((PlaybackEvent) -> Void)?

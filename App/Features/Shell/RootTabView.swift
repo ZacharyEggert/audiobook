@@ -6,30 +6,25 @@ struct RootTabView: View {
     @Environment(ImportCoordinator.self) private var imports
     @Environment(PlayerController.self) private var player
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var searchText = ""
     @State private var isPlayerPresented = false
     @Namespace private var playerTransition
 
     var body: some View {
         TabView {
             Tab("Home", systemImage: "house") {
-                PlaceholderScreen(title: "Home", systemImage: "house")
+                HomeScreen()
             }
             Tab("Library", systemImage: "books.vertical") {
                 LibraryScreen()
             }
             Tab("Stats", systemImage: "chart.bar") {
-                PlaceholderScreen(title: "Stats", systemImage: "chart.bar")
+                StatsScreen()
             }
             Tab("Settings", systemImage: "gearshape") {
                 SettingsScreen()
             }
             Tab(role: .search) {
-                NavigationStack {
-                    ContentUnavailableView.search(text: searchText)
-                        .navigationTitle("Search")
-                }
-                .searchable(text: $searchText)
+                SearchScreen { isPlayerPresented = true }
             }
         }
         .tabBarMinimizeBehavior(.onScrollDown)
@@ -62,24 +57,6 @@ struct RootTabView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(player.lastError ?? "")
-        }
-    }
-}
-
-/// Scrollable stand-in so the tab bar minimize behavior can be seen.
-private struct PlaceholderScreen: View {
-    let title: String
-    let systemImage: String
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                ContentUnavailableView(title, systemImage: systemImage, description: Text("Coming soon"))
-                    .padding(.vertical, 120)
-                Color.clear.frame(height: 800)
-            }
-            .background(Theme.background)
-            .navigationTitle(title)
         }
     }
 }

@@ -15,10 +15,22 @@ import Observation
     public var lastError: String?
     public var rate: Float = 1 {
         didSet {
+            let snapped = PlaybackSpeed.clamp(rate)
+            guard snapped == rate else {
+                rate = snapped
+                return
+            }
             engine.rate = rate
+            listening.setRate(rate, at: now())
             onTimingChange?()
+            if !isRestoringRate, let book {
+                onRateChange?(book.id, rate)
+            }
         }
     }
+
+    /// The speed for books without one of their own.
+    public var defaultRate: Float = 1
 
     public var skipBackInterval: TimeInterval = 15 {
         didSet { onTimingChange?() }
@@ -27,6 +39,16 @@ import Observation
     public var skipForwardInterval: TimeInterval = 30 {
         didSet { onTimingChange?() }
     }
+
+    /// Rewinds a little on resume, more the longer the pause (`SmartRewind`).
+    public var smartRewindEnabled = true
+    /// The remote previous-track command (headphones, lock screen) adds a bookmark instead of changing chapter.
+    public var previousTrackAddsBookmark = false
+
+    public let sleepTimer: SleepTimer
+
+    /// Starts a sleep timer when playback starts at night and none is running.
+    public var nightTimer: NightTimer?
 
     public var isPlaying: Bool {
         state == .playing
@@ -52,23 +74,43 @@ import Observation
     /// intervals. Not called on every tick.
     @ObservationIgnored public var onTimingChange: (() -> Void)?
 
+    /// The listening session so far: every `saveNow()` while playing, and when playback stops. Same `id` throughout a session.
+    @ObservationIgnored public var onListeningSample: ((ListeningSample) -> Void)?
+    /// The user asked for a bookmark at `(bookID, position)`.
+    @ObservationIgnored public var onAddBookmark: ((UUID, TimeInterval) -> Void)?
+    /// The user changed the speed for this book.
+    @ObservationIgnored public var onRateChange: ((UUID, Float) -> Void)?
+    /// The speed remembered for a book, if any; `load` uses it instead of `defaultRate`.
+    @ObservationIgnored public var savedRate: ((UUID) -> Float?)?
+
     @ObservationIgnored public private(set) var engine: any PlaybackEngine
     @ObservationIgnored private let makeEngine: () -> any PlaybackEngine
     @ObservationIgnored private var lastSavedPosition: TimeInterval = 0
     /// The user wants playback; survives the engine pausing on its own, so an interruption knows whether to resume.
     @ObservationIgnored private var wantsToPlay = false
     @ObservationIgnored private var resumeAfterInterruption = false
+    /// When playback last paused, for smart rewind. Nil after a load, so a relaunch doesn't rewind.
+    @ObservationIgnored private var pausedAt: Date?
+    @ObservationIgnored private var isRestoringRate = false
+    @ObservationIgnored private var listening = ListeningTracker()
+    @ObservationIgnored private let now: () -> Date
+    /// The rewind-then-play started by `play()`, so tests can wait for it.
+    @ObservationIgnored private(set) var resumeTask: Task<Void, Never>?
 
     /// `makeEngine` is called now and again after a media services reset.
-    public init(makeEngine: @escaping () -> any PlaybackEngine) {
+    public init(makeEngine: @escaping () -> any PlaybackEngine, now: @escaping () -> Date = Date.init) {
         self.makeEngine = makeEngine
+        self.now = now
+        sleepTimer = SleepTimer(now: now)
         engine = makeEngine()
         engine.onEvent = { [weak self] in self?.handle($0) }
+        sleepTimer.onStop = { [weak self] in self?.pause() }
+        sleepTimer.onVolume = { [weak self] in self?.engine.volume = $0 }
     }
 
     /// A media services reset reloads into the same `engine`.
-    public convenience init(engine: any PlaybackEngine) {
-        self.init(makeEngine: { engine })
+    public convenience init(engine: any PlaybackEngine, now: @escaping () -> Date = Date.init) {
+        self.init(makeEngine: { engine }, now: now)
     }
 
     /// Loads `book` paused at `position`.
@@ -77,7 +119,13 @@ import Observation
         lastError = nil
         do {
             try await engine.load(book, folder: folder, at: position)
-            engine.rate = rate
+            pausedAt = nil
+            if book.id != self.book?.id {
+                isRestoringRate = true
+                rate = savedRate?(book.id) ?? defaultRate
+                isRestoringRate = false
+            }
+            engine.rate = rate // didSet skips an unchanged rate, e.g. on a rebuilt engine
             self.book = book
             self.folder = folder
             update(position: engine.currentTime)
@@ -92,12 +140,48 @@ import Observation
         guard book != nil else { return }
         wantsToPlay = true
         onWillPlay?()
-        engine.play()
+        if let nightTimer, !sleepTimer.isActive, nightTimer.contains(now()) {
+            startSleepTimer(.duration(TimeInterval(nightTimer.minutes) * 60))
+        }
+        sleepTimer.playbackStarted()
+        let rewind = smartRewindEnabled && state != .playing ? pausedAt
+            .map { SmartRewind.seconds(afterPause: now().timeIntervalSince($0)) } ?? 0 : 0
+        pausedAt = nil
+        guard rewind > 0 else {
+            engine.play()
+            return
+        }
+        resumeTask = Task {
+            await seek(to: position - rewind)
+            if wantsToPlay {
+                engine.play()
+            }
+        }
     }
 
     public func pause() {
+        if state == .playing {
+            pausedAt = now()
+        }
         wantsToPlay = false
+        sleepTimer.playbackPaused()
         engine.pause()
+    }
+
+    /// Starts the sleep timer; `.endOfChapter` ends at the current chapter's end.
+    public func startSleepTimer(_ mode: SleepTimer.Mode) {
+        sleepTimer.start(mode, position: position, rate: rate)
+    }
+
+    /// Starts a timer that stops at the end of the current chapter, if there is one.
+    public func startSleepTimerAtChapterEnd() {
+        guard let chapter else { return }
+        startSleepTimer(.endOfChapter(end: chapter.end))
+    }
+
+    /// A shake: add time to a running sleep timer.
+    public func extendSleepTimer() {
+        sleepTimer.extend(position: position, rate: rate)
     }
 
     public func toggle() {
@@ -127,6 +211,11 @@ import Observation
         await skip(by: skipForwardInterval)
     }
 
+    public func addBookmark() {
+        guard let book else { return }
+        onAddBookmark?(book.id, position)
+    }
+
     public func jump(to chapter: Chapter) async {
         await seek(to: chapter.start)
     }
@@ -153,6 +242,7 @@ import Observation
         guard let book else { return }
         lastSavedPosition = position
         onPositionSave?(book.id, position)
+        reportListening(listening.snapshot(at: now()))
     }
 
     /// Reacts to the audio session (PLAN §4): pause on interruption and resume after it if we were playing, pause when
@@ -180,6 +270,7 @@ import Observation
         engine = makeEngine()
         engine.onEvent = { [weak self] in self?.handle($0) }
         wantsToPlay = false
+        reportListening(listening.end(at: now()))
         state = .idle
         if let book, let folder {
             await load(book, folder: folder, at: position)
@@ -190,6 +281,9 @@ import Observation
         switch event {
         case let .time(time):
             update(position: time)
+            if state == .playing {
+                sleepTimer.tick(position: position, rate: rate)
+            }
             // ponytail: 5 s of book time, so more often in wall time at speed; harmless
             if state == .playing, abs(position - lastSavedPosition) >= 5 {
                 saveNow()
@@ -197,6 +291,7 @@ import Observation
         case let .state(new):
             let old = state
             state = new
+            trackListening(from: old, to: new)
             if new == .ended {
                 wantsToPlay = false
                 saveNow()
@@ -225,6 +320,23 @@ import Observation
     }
 }
 
+private extension PlayerController {
+    /// A session runs from the engine starting to play until it stops for any reason.
+    func trackListening(from old: PlaybackState, to new: PlaybackState) {
+        if new == .playing, old != .playing, let book {
+            listening.begin(bookID: book.id, rate: rate, at: now())
+        } else if old == .playing, new != .playing {
+            reportListening(listening.end(at: now()))
+        }
+    }
+
+    func reportListening(_ sample: ListeningSample?) {
+        if let sample {
+            onListeningSample?(sample)
+        }
+    }
+}
+
 /// What the audio session reports, reduced to what playback reacts to. `AudioSession` maps `AVAudioSession`'s
 /// notifications to these on iOS.
 public enum AudioSessionEvent: Equatable, Sendable {
@@ -233,4 +345,17 @@ public enum AudioSessionEvent: Equatable, Sendable {
     /// Headphones unplugged or Bluetooth gone.
     case oldDeviceUnavailable
     case mediaServicesReset
+}
+
+/// How far to back up when resuming (PLAN §4): 0 s after under a minute, 5 s under 10 minutes, 15 s under an hour,
+/// else 30 s.
+public enum SmartRewind {
+    public static func seconds(afterPause pause: TimeInterval) -> TimeInterval {
+        switch pause {
+        case ..<60: 0
+        case ..<600: 5
+        case ..<3600: 15
+        default: 30
+        }
+    }
 }

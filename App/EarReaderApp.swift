@@ -11,6 +11,7 @@ struct EarReaderApp: App {
     @State private var player: PlayerController
     @State private var nowPlaying: NowPlaying
     @State private var audioSession: AudioSession
+    @State private var shake = ShakeDetector()
 
     init() {
         do {
@@ -20,9 +21,29 @@ struct EarReaderApp: App {
         }
         _imports = State(initialValue: ImportCoordinator(container: container))
         let player = PlayerController(makeEngine: { AVPlayerEngine() })
+        PlayerSettings.apply(to: player)
+        player.savedRate = { PlayerSettings.speed(for: $0) }
+        player.onRateChange = { PlayerSettings.setSpeed($1, for: $0) }
         let context = container.mainContext
         player.onPositionSave = { PlaybackProgress.save(bookID: $0, position: $1, in: context) }
-        player.onBookFinished = { id in PlaybackProgress.save(bookID: id, position: player.duration, finished: true, in: context) }
+        player.onBookFinished = { id in
+            PlaybackProgress.save(bookID: id, position: player.duration, finished: true, in: context)
+            guard UserDefaults.standard.bool(forKey: PlayerSettings.autoPlayNextKey),
+                  let books = try? context.fetch(FetchDescriptor<BookRecord>()),
+                  let finished = books.first(where: { $0.id == id }),
+                  let next = books.nextInSeries(after: finished)
+            else { return }
+            Task {
+                await player.load(
+                    next.book,
+                    folder: LibraryFiles().folder(for: next.id),
+                    at: PlaybackProgress.position(of: next.id, in: context),
+                )
+                player.play()
+            }
+        }
+        player.onListeningSample = { ListeningLog.record($0, in: context) }
+        player.onAddBookmark = { Bookmarks.add(bookID: $0, position: $1, in: context) }
         _player = State(initialValue: player)
         _nowPlaying = State(initialValue: NowPlaying(player: player) { book in
             await CoverCache.image(bookID: book.id, coverRef: book.coverRef, size: .player)?.cgImage
@@ -38,6 +59,14 @@ struct EarReaderApp: App {
                 .environment(player)
                 .onOpenURL { imports.open($0) }
                 .task { await restoreLastBook() }
+                .onChange(of: player.sleepTimer.isActive, initial: true) {
+                    shake.onShake = { player.extendSleepTimer() }
+                    if player.sleepTimer.isActive {
+                        shake.start()
+                    } else {
+                        shake.stop()
+                    }
+                }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.willTerminateNotification)) { _ in
                     player.saveNow()
                 }

@@ -53,6 +53,16 @@ extension [BookRecord] {
     }
 }
 
+extension [BookRecord] {
+    /// The book after `book` in its series order, if it has a series and isn't the last.
+    func nextInSeries(after book: BookRecord) -> BookRecord? {
+        guard let series = book.displaySeries else { return nil }
+        let ordered = books(in: LibraryGroup(kind: .series, name: series), collections: [])
+        guard let index = ordered.firstIndex(where: { $0.id == book.id }) else { return nil }
+        return ordered[(index + 1)...].first
+    }
+}
+
 private extension BookRecord {
     func groupNames(_ kind: LibraryGroup.Kind) -> [String] {
         switch kind {

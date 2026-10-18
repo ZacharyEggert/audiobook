@@ -24,6 +24,8 @@ public enum PlaybackEvent: Equatable, Sendable {
     func seek(to global: TimeInterval) async
     /// 0.5 … 3.5.
     var rate: Float { get set }
+    /// 0 … 1; the sleep timer fades it out.
+    var volume: Float { get set }
     var currentTime: TimeInterval { get }
     /// Called on the main actor for every event. Set by the owner; a callback rather than a stream so delivery is
     /// synchronous and tests needn't wait for it.

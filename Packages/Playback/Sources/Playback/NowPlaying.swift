@@ -70,13 +70,19 @@ import MediaPlayer
         on(commands.skipBackwardCommand) { _ in Task { await player.skipBack() } }
         on(commands.skipForwardCommand) { _ in Task { await player.skipForward() } }
         on(commands.nextTrackCommand) { _ in Task { await player.nextChapter() } }
-        on(commands.previousTrackCommand) { _ in Task { await player.previousChapter() } }
+        on(commands.previousTrackCommand) { _ in
+            if player.previousTrackAddsBookmark {
+                player.addBookmark()
+            } else {
+                Task { await player.previousChapter() }
+            }
+        }
         on(commands.changePlaybackPositionCommand) { [weak self] event in
             guard let self, let event = event as? MPChangePlaybackPositionCommandEvent else { return }
             let target = Self.globalTime(remote: event.positionTime, player: player, usesChapterTime: usesChapterTime)
             Task { await player.seek(to: target) }
         }
-        commands.changePlaybackRateCommand.supportedPlaybackRates = [0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3]
+        commands.changePlaybackRateCommand.supportedPlaybackRates = PlaybackSpeed.remoteRates.map { NSNumber(value: $0) }
         on(commands.changePlaybackRateCommand) { event in
             guard let event = event as? MPChangePlaybackRateCommandEvent else { return }
             player.rate = event.playbackRate

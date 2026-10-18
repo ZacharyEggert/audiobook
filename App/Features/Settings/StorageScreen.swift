@@ -1,11 +1,61 @@
 import Library
+import Playback
 import SwiftData
 import SwiftUI
 
 struct SettingsScreen: View {
+    @Environment(PlayerController.self) private var player
+    @AppStorage(PlayerSettings.skipBackKey) private var skipBack = 15
+    @AppStorage(PlayerSettings.skipForwardKey) private var skipForward = 30
+    @AppStorage(PlayerSettings.defaultSpeedKey) private var defaultSpeed: Double = 1
+    @AppStorage(PlayerSettings.smartRewindKey) private var smartRewind = true
+    @AppStorage(PlayerSettings.bookmarkOnPreviousKey) private var bookmarkOnPrevious = false
+    @AppStorage(PlayerSettings.autoPlayNextKey) private var autoPlayNext = false
+    @AppStorage(PlayerSettings.nightTimerKey) private var nightTimer = false
+    @AppStorage(PlayerSettings.nightStartKey) private var nightStart = 22
+    @AppStorage(PlayerSettings.nightEndKey) private var nightEnd = 6
+    @AppStorage(PlayerSettings.nightMinutesKey) private var nightMinutes = 30
+
     var body: some View {
         NavigationStack {
             List {
+                Section {
+                    Picker("Skip Back", selection: $skipBack) {
+                        ForEach(PlayerSettings.intervals, id: \.self) { Text("\($0) seconds").tag($0) }
+                    }
+                    Picker("Skip Forward", selection: $skipForward) {
+                        ForEach(PlayerSettings.intervals, id: \.self) { Text("\($0) seconds").tag($0) }
+                    }
+                    Stepper(
+                        "Default Speed \(PlaybackSpeed.clamp(Float(defaultSpeed)).formatted())×",
+                        value: $defaultSpeed, in: Double(PlaybackSpeed.range.lowerBound) ... Double(PlaybackSpeed.range.upperBound),
+                        step: Double(PlaybackSpeed.step),
+                    )
+                    Toggle("Smart Rewind", isOn: $smartRewind)
+                    Toggle("Bookmark on Previous Track", isOn: $bookmarkOnPrevious)
+                    Toggle("Auto-Play Next in Series", isOn: $autoPlayNext)
+                } header: {
+                    Text("Playback")
+                } footer: {
+                    Text(
+                        "Smart Rewind backs up a few seconds when you resume, more the longer you were away. "
+                            + "Default Speed applies to books without their own speed. "
+                            +
+                            "Bookmark on Previous Track makes the previous-track button on headphones and the lock screen add a bookmark.",
+                    )
+                }
+                Section {
+                    Toggle("Night Timer", isOn: $nightTimer)
+                    if nightTimer {
+                        Picker("From", selection: $nightStart) { ForEach(0 ..< 24, id: \.self) { Text(Self.hour($0)).tag($0) } }
+                        Picker("Until", selection: $nightEnd) { ForEach(0 ..< 24, id: \.self) { Text(Self.hour($0)).tag($0) } }
+                        Stepper("Stop after \(nightMinutes) minutes", value: $nightMinutes, in: 5 ... 120, step: 5)
+                    }
+                } header: {
+                    Text("Sleep Timer")
+                } footer: {
+                    Text("Starts a sleep timer when you press play during these hours. Shake your phone to add time.")
+                }
                 NavigationLink {
                     StorageScreen()
                 } label: {
@@ -13,7 +63,19 @@ struct SettingsScreen: View {
                 }
             }
             .navigationTitle("Settings")
+            .onChange(of: [
+                skipBack, skipForward, smartRewind ? 1 : 0, bookmarkOnPrevious ? 1 : 0, Int((defaultSpeed * 20).rounded()),
+                nightTimer ? 1 : 0, nightStart, nightEnd, nightMinutes,
+            ]) {
+                PlayerSettings.apply(to: player)
+            }
         }
+    }
+}
+
+private extension SettingsScreen {
+    static func hour(_ hour: Int) -> String {
+        Calendar.current.date(from: DateComponents(hour: hour))?.formatted(date: .omitted, time: .shortened) ?? "\(hour):00"
     }
 }
 

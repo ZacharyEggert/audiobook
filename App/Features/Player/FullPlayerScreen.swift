@@ -9,10 +9,12 @@ struct FullPlayerScreen: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var isShowingChapters = false
-    /// Chapter seconds while the scrubber is dragged; seeking waits for release.
+    @State private var isShowingSpeed = false
+    @State private var isShowingSleep = false
+    @State private var isShowingBookmarks = false
+    @State private var bookmarksAdded = 0
+    /// Global book seconds while the scrubber is dragged; seeking waits for release.
     @State private var scrub: TimeInterval?
-
-    private static let rates: [Float] = [0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3]
 
     var body: some View {
         NavigationStack {
@@ -21,8 +23,12 @@ struct FullPlayerScreen: View {
                     .background { backdrop(book) }
                     .toolbar { toolbar }
                     .sheet(isPresented: $isShowingChapters) { ChaptersSheet() }
+                    .sheet(isPresented: $isShowingSpeed) { SpeedSheet() }
+                    .sheet(isPresented: $isShowingSleep) { SleepTimerSheet() }
+                    .sheet(isPresented: $isShowingBookmarks) { BookmarksSheet(bookID: book.id) }
             }
         }
+        .sensoryFeedback(.success, trigger: bookmarksAdded)
         .gesture(DragGesture().onEnded {
             if $0.translation.height > 120 {
                 dismiss()
@@ -37,13 +43,13 @@ struct FullPlayerScreen: View {
 
     private func content(_ book: Book) -> some View {
         let chapter = player.chapter ?? Chapter(index: 0, title: book.title, start: 0, end: book.duration)
-        let elapsed = scrub ?? player.chapterElapsed
+        let title = scrub.flatMap { player.chapterTitle(at: $0) } ?? chapter.title
         return VStack(spacing: 20) {
             Spacer(minLength: 0)
             CoverView(bookID: book.id, coverRef: book.coverRef, title: book.title, size: .player, cornerRadius: 12)
                 .padding(.horizontal, 12)
             VStack(spacing: 4) {
-                Text(chapter.title)
+                Text(title)
                     .font(.title2.bold())
                     .foregroundStyle(Theme.textPrimary)
                 Text([book.title, book.authors.formatted(.list(type: .and))].filter { !$0.isEmpty }.joined(separator: " · "))
@@ -52,31 +58,8 @@ struct FullPlayerScreen: View {
             }
             .lineLimit(1)
             .multilineTextAlignment(.center)
-            VStack(spacing: 4) {
-                Slider(
-                    value: Binding { elapsed } set: { scrub = $0 },
-                    in: 0 ... max(chapter.duration, 1),
-                ) { editing in
-                    guard !editing, let scrub else { return }
-                    Task {
-                        await player.seek(to: chapter.start + scrub)
-                        self.scrub = nil
-                    }
-                }
-                .accessibilityLabel("Chapter position")
-                .accessibilityValue("\(BookProgress.clock(elapsed)) of \(BookProgress.clock(chapter.duration))")
-                HStack {
-                    Text(BookProgress.clock(elapsed))
-                    Spacer()
-                    Text("\(BookProgress.format((player.duration - player.position) / Double(player.rate))) left")
-                    Spacer()
-                    Text("-\(BookProgress.clock(chapter.duration - elapsed))")
-                }
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(Theme.textSecondary)
-                .accessibilityElement(children: .combine)
-            }
-            TransportCluster()
+            ScrubberBar(scrub: $scrub)
+            TransportCluster(isShowingSleep: $isShowingSleep)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 24)
@@ -101,23 +84,21 @@ struct FullPlayerScreen: View {
             Button("Close", systemImage: "chevron.down") { dismiss() }
         }
         ToolbarItemGroup(placement: .bottomBar) {
-            @Bindable var player = player
-            Menu {
-                Picker("Speed", selection: $player.rate) {
-                    ForEach(Self.rates, id: \.self) { Text("\($0.formatted())×").tag($0) }
-                }
-            } label: {
+            Button { isShowingSpeed = true } label: {
                 Text("\(player.rate.formatted())×").monospacedDigit()
             }
             .accessibilityLabel("Speed")
             .accessibilityValue("\(player.rate.formatted()) times")
             Spacer()
-            // ponytail: sleep timer and bookmarks arrive with their own tasks
-            Button("Sleep Timer", systemImage: "moon.zzz") {}.disabled(true)
-            Spacer()
             Button("Chapters", systemImage: "list.bullet") { isShowingChapters = true }
             Spacer()
-            Button("Bookmark", systemImage: "bookmark") {}.disabled(true)
+            Menu("Bookmark", systemImage: "bookmark") {
+                Button("Add Bookmark", systemImage: "bookmark.fill") {
+                    player.addBookmark()
+                    bookmarksAdded += 1
+                }
+                Button("Show Bookmarks", systemImage: "list.bullet") { isShowingBookmarks = true }
+            }
             Spacer()
             RoutePicker()
                 .frame(width: 32, height: 32)
@@ -126,34 +107,128 @@ struct FullPlayerScreen: View {
     }
 }
 
+/// Scrubber over the chapter or the whole book (tap the times to switch, remembered), with speed-adjusted time left.
+private struct ScrubberBar: View {
+    @Environment(PlayerController.self) private var player
+    @AppStorage(PlayerSettings.scrubberModeKey) private var storedMode = ScrubberMode.chapter.rawValue
+    /// Global book seconds while dragging; seeking waits for release.
+    @Binding var scrub: TimeInterval?
+
+    var body: some View {
+        let mode = ScrubberMode(rawValue: storedMode) ?? .chapter
+        let span = player.scrubberSpan(mode)
+        let global = scrub ?? player.position
+        let left = BookProgress.format(span.timeLeft(at: global, rate: player.rate))
+        VStack(spacing: 4) {
+            // Global seconds, so a scrub in either mode seeks straight to the value
+            Slider(
+                value: Binding { span.start + span.elapsed(at: global) } set: { scrub = $0 },
+                in: span.start ... max(span.end, span.start + 1),
+            ) { editing in
+                guard !editing, let target = scrub else { return }
+                Task {
+                    await player.seek(to: target)
+                    scrub = nil
+                }
+            }
+            .accessibilityLabel(mode == .chapter ? "Chapter position" : "Book position")
+            .accessibilityValue("\(BookProgress.clock(span.elapsed(at: global))) of \(BookProgress.clock(span.duration))")
+            Button { storedMode = mode.toggled.rawValue } label: {
+                HStack {
+                    Text(BookProgress.clock(span.elapsed(at: global)))
+                    Spacer()
+                    Text("\(left) left in \(mode.rawValue)")
+                    Spacer()
+                    Text("-\(BookProgress.clock(span.remaining(at: global)))")
+                }
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(Theme.textSecondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Time left in \(mode.rawValue)")
+            .accessibilityValue(left)
+            .accessibilityHint("Switches the scrubber to the \(mode.toggled.rawValue)")
+        }
+    }
+}
+
 /// Previous chapter, skip back, play/pause, skip forward and next chapter, morphing as one glass group.
 struct TransportCluster: View {
     @Environment(PlayerController.self) private var player
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Binding var isShowingSleep: Bool
+    @State private var skips = 0
+    @Namespace private var glass
 
     var body: some View {
         GlassEffectContainer(spacing: 16) {
-            HStack(spacing: 16) {
-                Button("Previous Chapter", systemImage: "backward.end.fill") {
-                    Task { await player.previousChapter() }
+            VStack(spacing: 16) {
+                HStack(spacing: 16) {
+                    Button("Previous Chapter", systemImage: "backward.end.fill") {
+                        Task { await player.previousChapter() }
+                    }
+                    .frame(width: 44, height: 44)
+                    skip(by: -player.skipBackInterval, symbol: "gobackward", label: "Skip back")
+                    GlassPlayButton()
+                    skip(by: player.skipForwardInterval, symbol: "goforward", label: "Skip forward")
+                    Button("Next Chapter", systemImage: "forward.end.fill") {
+                        Task { await player.nextChapter() }
+                    }
+                    .frame(width: 44, height: 44)
+                    .disabled(player.chapter.map { $0.index == player.book?.chapters.last?.index } ?? true)
                 }
-                .frame(width: 44, height: 44)
-                skip(by: -player.skipBackInterval, symbol: "gobackward", label: "Skip back")
-                GlassPlayButton()
-                skip(by: player.skipForwardInterval, symbol: "goforward", label: "Skip forward")
-                Button("Next Chapter", systemImage: "forward.end.fill") {
-                    Task { await player.nextChapter() }
-                }
-                .frame(width: 44, height: 44)
-                .disabled(player.chapter.map { $0.index == player.book?.chapters.last?.index } ?? true)
+                sleepControl
             }
             .labelStyle(.iconOnly)
             .foregroundStyle(Theme.textPrimary)
         }
+        .sensoryFeedback(.impact, trigger: skips)
+        .sensoryFeedback(trigger: player.sleepTimer.state) { old, new in
+            switch (old, new) {
+            case (.off, .running), (.stopped, .running): .success
+            case (_, .fading): .warning
+            default: nil
+            }
+        }
+        // No morph with Reduce Motion: the glass swaps instantly.
+        .animation(reduceMotion ? nil : .smooth, value: player.sleepTimer.isActive)
+    }
+
+    /// A moon button that morphs into a countdown pill while the timer runs.
+    @ViewBuilder private var sleepControl: some View {
+        let timer = player.sleepTimer
+        Button { isShowingSleep = true } label: {
+            if let remaining = timer.remaining, timer.isActive {
+                Label {
+                    Text(Duration.seconds(remaining.rounded(.up)).formatted(.time(pattern: .hourMinuteSecond)))
+                        .monospacedDigit()
+                } icon: {
+                    Image(systemName: "moon.zzz.fill")
+                }
+                .labelStyle(.titleAndIcon)
+                .padding(.horizontal, 16)
+                .frame(height: 44)
+                .glassEffect(.regular.interactive(), in: .capsule)
+                .glassEffectID("sleep", in: glass)
+            } else {
+                Image(systemName: "moon.zzz")
+                    .frame(width: 44, height: 44)
+                    .glassEffect(.regular.interactive(), in: .circle)
+                    .glassEffectID("sleep", in: glass)
+            }
+        }
+        .accessibilityLabel("Sleep Timer")
+        .accessibilityValue(timer.remaining.flatMap { timer.isActive ? Self.spoken($0) : nil } ?? "Off")
+    }
+
+    private static func spoken(_ seconds: TimeInterval) -> String {
+        Duration.seconds(seconds.rounded(.up)).formatted(.units(allowed: [.hours, .minutes, .seconds]))
     }
 
     private func skip(by seconds: TimeInterval, symbol: String, label: String) -> some View {
         let interval = Int(abs(seconds))
         return Button("\(label) \(interval) seconds", systemImage: "\(symbol).\(interval)") {
+            skips += 1
             Task { await player.skip(by: seconds) }
         }
         .font(.title2)
@@ -207,4 +282,10 @@ extension PlayerController {
 
 #Preview {
     FullPlayerScreen().environment(PlayerController.preview())
+}
+
+#Preview("Sleep timer active") {
+    let player = PlayerController.preview()
+    player.startSleepTimer(.duration(25 * 60))
+    return FullPlayerScreen().environment(player)
 }

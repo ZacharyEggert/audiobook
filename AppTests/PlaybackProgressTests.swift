@@ -51,4 +51,43 @@ import Testing
         _ = try book("Unplayed")
         #expect(PlaybackProgress.lastBook(in: context, files: files) == nil)
     }
+
+    @Test func `mark finished then unfinished at the end restarts`() throws {
+        let book = try book("A")
+        PlaybackProgress.save(bookID: book.id, position: 60, finished: true, in: context)
+        PlaybackProgress.setFinished(false, bookID: book.id, duration: 60, in: context)
+        let record = try #require(context.fetch(FetchDescriptor<ProgressRecord>()).first)
+        #expect(!record.isFinished)
+        #expect(record.position == 0)
+    }
+
+    @Test func `unfinishing mid-book keeps position, finishing a new book makes a record`() throws {
+        let book = try book("A")
+        PlaybackProgress.setFinished(true, bookID: book.id, duration: 60, in: context)
+        #expect(try context.fetch(FetchDescriptor<ProgressRecord>()).first?.isFinished == true)
+        PlaybackProgress.save(bookID: book.id, position: 20, in: context)
+        PlaybackProgress.setFinished(false, bookID: book.id, duration: 60, in: context)
+        #expect(try context.fetch(FetchDescriptor<ProgressRecord>()).first?.position == 20)
+    }
+
+    @Test func `reset returns to not started`() throws {
+        let book = try book("A")
+        PlaybackProgress.save(bookID: book.id, position: 60, finished: true, in: context)
+        PlaybackProgress.reset(bookID: book.id, in: context)
+        let record = try #require(context.fetch(FetchDescriptor<ProgressRecord>()).first)
+        #expect(BookProgress(book: book, record: record).status == .notStarted)
+        #expect(PlaybackProgress.position(of: book.id, in: context) == 0)
+    }
+
+    @Test func `next in series follows index and ends at the last`() {
+        func entry(_ title: String, _ index: Double?) -> BookRecord {
+            BookRecord(title: title, series: "S", seriesIndex: index)
+        }
+        let (one, two, three) = (entry("1", 1), entry("2", 2), entry("3", 3))
+        let books = [three, one, two, BookRecord(title: "Standalone")]
+        #expect(books.nextInSeries(after: one)?.id == two.id)
+        #expect(books.nextInSeries(after: two)?.id == three.id)
+        #expect(books.nextInSeries(after: three) == nil)
+        #expect(books.nextInSeries(after: books[3]) == nil)
+    }
 }
