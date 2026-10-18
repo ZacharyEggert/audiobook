@@ -12,6 +12,7 @@ struct FullPlayerScreen: View {
     @State private var isShowingSpeed = false
     @State private var isShowingSleep = false
     @State private var isShowingBookmarks = false
+    @State private var bookmarksAdded = 0
     /// Global book seconds while the scrubber is dragged; seeking waits for release.
     @State private var scrub: TimeInterval?
 
@@ -27,6 +28,7 @@ struct FullPlayerScreen: View {
                     .sheet(isPresented: $isShowingBookmarks) { BookmarksSheet(bookID: book.id) }
             }
         }
+        .sensoryFeedback(.success, trigger: bookmarksAdded)
         .gesture(DragGesture().onEnded {
             if $0.translation.height > 120 {
                 dismiss()
@@ -91,7 +93,10 @@ struct FullPlayerScreen: View {
             Button("Chapters", systemImage: "list.bullet") { isShowingChapters = true }
             Spacer()
             Menu("Bookmark", systemImage: "bookmark") {
-                Button("Add Bookmark", systemImage: "bookmark.fill") { player.addBookmark() }
+                Button("Add Bookmark", systemImage: "bookmark.fill") {
+                    player.addBookmark()
+                    bookmarksAdded += 1
+                }
                 Button("Show Bookmarks", systemImage: "list.bullet") { isShowingBookmarks = true }
             }
             Spacer()
@@ -152,6 +157,7 @@ struct TransportCluster: View {
     @Environment(PlayerController.self) private var player
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var isShowingSleep: Bool
+    @State private var skips = 0
     @Namespace private var glass
 
     var body: some View {
@@ -175,6 +181,14 @@ struct TransportCluster: View {
             }
             .labelStyle(.iconOnly)
             .foregroundStyle(Theme.textPrimary)
+        }
+        .sensoryFeedback(.impact, trigger: skips)
+        .sensoryFeedback(trigger: player.sleepTimer.state) { old, new in
+            switch (old, new) {
+            case (.off, .running), (.stopped, .running): .success
+            case (_, .fading): .warning
+            default: nil
+            }
         }
         // No morph with Reduce Motion: the glass swaps instantly.
         .animation(reduceMotion ? nil : .smooth, value: player.sleepTimer.isActive)
@@ -214,6 +228,7 @@ struct TransportCluster: View {
     private func skip(by seconds: TimeInterval, symbol: String, label: String) -> some View {
         let interval = Int(abs(seconds))
         return Button("\(label) \(interval) seconds", systemImage: "\(symbol).\(interval)") {
+            skips += 1
             Task { await player.skip(by: seconds) }
         }
         .font(.title2)
