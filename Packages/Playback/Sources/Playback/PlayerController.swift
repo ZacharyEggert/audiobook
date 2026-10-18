@@ -28,6 +28,9 @@ import Observation
         didSet { onTimingChange?() }
     }
 
+    /// Rewinds a little on resume, more the longer the pause (`SmartRewind`).
+    public var smartRewindEnabled = true
+
     public var isPlaying: Bool {
         state == .playing
     }
@@ -58,17 +61,23 @@ import Observation
     /// The user wants playback; survives the engine pausing on its own, so an interruption knows whether to resume.
     @ObservationIgnored private var wantsToPlay = false
     @ObservationIgnored private var resumeAfterInterruption = false
+    /// When playback last paused, for smart rewind. Nil after a load, so a relaunch doesn't rewind.
+    @ObservationIgnored private var pausedAt: Date?
+    @ObservationIgnored private let now: () -> Date
+    /// The rewind-then-play started by `play()`, so tests can wait for it.
+    @ObservationIgnored private(set) var resumeTask: Task<Void, Never>?
 
     /// `makeEngine` is called now and again after a media services reset.
-    public init(makeEngine: @escaping () -> any PlaybackEngine) {
+    public init(makeEngine: @escaping () -> any PlaybackEngine, now: @escaping () -> Date = Date.init) {
         self.makeEngine = makeEngine
+        self.now = now
         engine = makeEngine()
         engine.onEvent = { [weak self] in self?.handle($0) }
     }
 
     /// A media services reset reloads into the same `engine`.
-    public convenience init(engine: any PlaybackEngine) {
-        self.init(makeEngine: { engine })
+    public convenience init(engine: any PlaybackEngine, now: @escaping () -> Date = Date.init) {
+        self.init(makeEngine: { engine }, now: now)
     }
 
     /// Loads `book` paused at `position`.
@@ -77,6 +86,7 @@ import Observation
         lastError = nil
         do {
             try await engine.load(book, folder: folder, at: position)
+            pausedAt = nil
             engine.rate = rate
             self.book = book
             self.folder = folder
@@ -92,10 +102,25 @@ import Observation
         guard book != nil else { return }
         wantsToPlay = true
         onWillPlay?()
-        engine.play()
+        let rewind = smartRewindEnabled && state != .playing ? pausedAt
+            .map { SmartRewind.seconds(afterPause: now().timeIntervalSince($0)) } ?? 0 : 0
+        pausedAt = nil
+        guard rewind > 0 else {
+            engine.play()
+            return
+        }
+        resumeTask = Task {
+            await seek(to: position - rewind)
+            if wantsToPlay {
+                engine.play()
+            }
+        }
     }
 
     public func pause() {
+        if state == .playing {
+            pausedAt = now()
+        }
         wantsToPlay = false
         engine.pause()
     }
@@ -233,4 +258,17 @@ public enum AudioSessionEvent: Equatable, Sendable {
     /// Headphones unplugged or Bluetooth gone.
     case oldDeviceUnavailable
     case mediaServicesReset
+}
+
+/// How far to back up when resuming (PLAN §4): 0 s after under a minute, 5 s under 10 minutes, 15 s under an hour,
+/// else 30 s.
+public enum SmartRewind {
+    public static func seconds(afterPause pause: TimeInterval) -> TimeInterval {
+        switch pause {
+        case ..<60: 0
+        case ..<600: 5
+        case ..<3600: 15
+        default: 30
+        }
+    }
 }

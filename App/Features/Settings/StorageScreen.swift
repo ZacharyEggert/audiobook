@@ -1,11 +1,30 @@
 import Library
+import Playback
 import SwiftData
 import SwiftUI
 
 struct SettingsScreen: View {
+    @Environment(PlayerController.self) private var player
+    @AppStorage(PlayerSettings.skipBackKey) private var skipBack = 15
+    @AppStorage(PlayerSettings.skipForwardKey) private var skipForward = 30
+    @AppStorage(PlayerSettings.smartRewindKey) private var smartRewind = true
+
     var body: some View {
         NavigationStack {
             List {
+                Section {
+                    Picker("Skip Back", selection: $skipBack) {
+                        ForEach(PlayerSettings.intervals, id: \.self) { Text("\($0) seconds").tag($0) }
+                    }
+                    Picker("Skip Forward", selection: $skipForward) {
+                        ForEach(PlayerSettings.intervals, id: \.self) { Text("\($0) seconds").tag($0) }
+                    }
+                    Toggle("Smart Rewind", isOn: $smartRewind)
+                } header: {
+                    Text("Playback")
+                } footer: {
+                    Text("Backs up a few seconds when you resume, more the longer you were away.")
+                }
                 NavigationLink {
                     StorageScreen()
                 } label: {
@@ -13,6 +32,7 @@ struct SettingsScreen: View {
                 }
             }
             .navigationTitle("Settings")
+            .onChange(of: [skipBack, skipForward, smartRewind ? 1 : 0]) { PlayerSettings.apply(to: player) }
         }
     }
 }
