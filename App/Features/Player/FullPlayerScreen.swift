@@ -12,7 +12,7 @@ struct FullPlayerScreen: View {
     @State private var isShowingSpeed = false
     @State private var isShowingSleep = false
     @State private var isShowingBookmarks = false
-    /// Chapter seconds while the scrubber is dragged; seeking waits for release.
+    /// Global book seconds while the scrubber is dragged; seeking waits for release.
     @State private var scrub: TimeInterval?
 
     var body: some View {
@@ -41,13 +41,13 @@ struct FullPlayerScreen: View {
 
     private func content(_ book: Book) -> some View {
         let chapter = player.chapter ?? Chapter(index: 0, title: book.title, start: 0, end: book.duration)
-        let elapsed = scrub ?? player.chapterElapsed
+        let title = scrub.flatMap { player.chapterTitle(at: $0) } ?? chapter.title
         return VStack(spacing: 20) {
             Spacer(minLength: 0)
             CoverView(bookID: book.id, coverRef: book.coverRef, title: book.title, size: .player, cornerRadius: 12)
                 .padding(.horizontal, 12)
             VStack(spacing: 4) {
-                Text(chapter.title)
+                Text(title)
                     .font(.title2.bold())
                     .foregroundStyle(Theme.textPrimary)
                 Text([book.title, book.authors.formatted(.list(type: .and))].filter { !$0.isEmpty }.joined(separator: " · "))
@@ -56,30 +56,7 @@ struct FullPlayerScreen: View {
             }
             .lineLimit(1)
             .multilineTextAlignment(.center)
-            VStack(spacing: 4) {
-                Slider(
-                    value: Binding { elapsed } set: { scrub = $0 },
-                    in: 0 ... max(chapter.duration, 1),
-                ) { editing in
-                    guard !editing, let scrub else { return }
-                    Task {
-                        await player.seek(to: chapter.start + scrub)
-                        self.scrub = nil
-                    }
-                }
-                .accessibilityLabel("Chapter position")
-                .accessibilityValue("\(BookProgress.clock(elapsed)) of \(BookProgress.clock(chapter.duration))")
-                HStack {
-                    Text(BookProgress.clock(elapsed))
-                    Spacer()
-                    Text("\(BookProgress.format((player.duration - player.position) / Double(player.rate))) left")
-                    Spacer()
-                    Text("-\(BookProgress.clock(chapter.duration - elapsed))")
-                }
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(Theme.textSecondary)
-                .accessibilityElement(children: .combine)
-            }
+            ScrubberBar(scrub: $scrub)
             TransportCluster(isShowingSleep: $isShowingSleep)
             Spacer(minLength: 0)
         }
@@ -121,6 +98,51 @@ struct FullPlayerScreen: View {
             RoutePicker()
                 .frame(width: 32, height: 32)
                 .accessibilityLabel("AirPlay")
+        }
+    }
+}
+
+/// Scrubber over the chapter or the whole book (tap the times to switch, remembered), with speed-adjusted time left.
+private struct ScrubberBar: View {
+    @Environment(PlayerController.self) private var player
+    @AppStorage(PlayerSettings.scrubberModeKey) private var storedMode = ScrubberMode.chapter.rawValue
+    /// Global book seconds while dragging; seeking waits for release.
+    @Binding var scrub: TimeInterval?
+
+    var body: some View {
+        let mode = ScrubberMode(rawValue: storedMode) ?? .chapter
+        let span = player.scrubberSpan(mode)
+        let global = scrub ?? player.position
+        let left = BookProgress.format(span.timeLeft(at: global, rate: player.rate))
+        VStack(spacing: 4) {
+            // Global seconds, so a scrub in either mode seeks straight to the value
+            Slider(
+                value: Binding { span.start + span.elapsed(at: global) } set: { scrub = $0 },
+                in: span.start ... max(span.end, span.start + 1),
+            ) { editing in
+                guard !editing, let target = scrub else { return }
+                Task {
+                    await player.seek(to: target)
+                    scrub = nil
+                }
+            }
+            .accessibilityLabel(mode == .chapter ? "Chapter position" : "Book position")
+            .accessibilityValue("\(BookProgress.clock(span.elapsed(at: global))) of \(BookProgress.clock(span.duration))")
+            Button { storedMode = mode.toggled.rawValue } label: {
+                HStack {
+                    Text(BookProgress.clock(span.elapsed(at: global)))
+                    Spacer()
+                    Text("\(left) left in \(mode.rawValue)")
+                    Spacer()
+                    Text("-\(BookProgress.clock(span.remaining(at: global)))")
+                }
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(Theme.textSecondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Time left in \(mode.rawValue)")
+            .accessibilityValue(left)
+            .accessibilityHint("Switches the scrubber to the \(mode.toggled.rawValue)")
         }
     }
 }

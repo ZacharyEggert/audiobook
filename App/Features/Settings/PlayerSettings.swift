@@ -12,6 +12,7 @@ enum PlayerSettings {
     static let nightStartKey = "nightTimerStartHour"
     static let nightEndKey = "nightTimerEndHour"
     static let nightMinutesKey = "nightTimerMinutes"
+    static let scrubberModeKey = "scrubberMode"
     private static let bookSpeedPrefix = "bookSpeed."
     static let intervals: [Int] = [5, 10, 15, 30, 45, 60, 90]
 
